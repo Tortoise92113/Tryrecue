@@ -5,8 +5,21 @@ import sys
 from google import genai
 
 MAX_RETRIES = 3
-RETRY_DELAY = 5
-SEMAPHORE_LIMIT = 50
+SEMAPHORE_LIMIT = 10
+
+# Gemini 2.5 Flash (non-thinking) pricing
+_PRICE_INPUT_PER_TOKEN  = 0.15 / 1_000_000   # $0.15 per 1M input tokens
+_PRICE_OUTPUT_PER_TOKEN = 0.60 / 1_000_000   # $0.60 per 1M output tokens
+
+_FAILURE_RESULT = {
+    "is_whv_friendly":  -1,
+    "visa_sponsorship": 0,
+    "accommodation":    0,
+    "urgency":          "normal",
+    "classifier_note":  "classification failed after retries",
+    "job_type":         "other",
+    "regional_area":    None,
+}
 
 PROMPT_TEMPLATE = """You are a job classifier for Australian Working Holiday Visa (WHV/subclass 417 & 462) holders.
 
@@ -62,7 +75,7 @@ def _validate(result: dict) -> dict:
 
 
 async def _process_job(client, model_name: str, semaphore: asyncio.Semaphore,
-                       job: dict, on_result) -> bool:
+                       job: dict, on_result, token_counts: list) -> bool:
     prompt = PROMPT_TEMPLATE.format(
         title=job.get("title", ""),
         company=job.get("company") or "Unknown",
@@ -77,6 +90,12 @@ async def _process_job(client, model_name: str, semaphore: asyncio.Semaphore,
                 response = await client.aio.models.generate_content(
                     model=model_name, contents=prompt
                 )
+                usage = getattr(response, "usage_metadata", None)
+                if usage:
+                    token_counts.append((
+                        getattr(usage, "prompt_token_count", 0) or 0,
+                        getattr(usage, "candidates_token_count", 0) or 0,
+                    ))
                 text = response.text.strip()
                 if text.startswith("```"):
                     text = text.split("```")[1]
@@ -92,9 +111,11 @@ async def _process_job(client, model_name: str, semaphore: asyncio.Semaphore,
                 print(f"[classifier] error (attempt {attempt}/{MAX_RETRIES}): {exc}", file=sys.stderr)
 
         if attempt < MAX_RETRIES:
-            await asyncio.sleep(RETRY_DELAY * attempt)
+            await asyncio.sleep(2 ** (attempt - 1))  # 1s, 2s, 4s...
 
     print(f"[classifier] gave up on job {job.get('id')!r} after {MAX_RETRIES} attempts", file=sys.stderr)
+    if on_result:
+        on_result(job["id"], _FAILURE_RESULT)
     return False
 
 
@@ -103,13 +124,22 @@ async def _classify_all(config: dict, jobs: list[dict], on_result) -> tuple[int,
     model_name = config["gemini"]["model"]
     semaphore = asyncio.Semaphore(SEMAPHORE_LIMIT)
 
+    token_counts: list = []
     results = await asyncio.gather(
-        *[_process_job(client, model_name, semaphore, job, on_result) for job in jobs]
+        *[_process_job(client, model_name, semaphore, job, on_result, token_counts) for job in jobs]
     )
 
     classified = sum(results)
     skipped = len(results) - classified
     print(f"[classifier] done — classified: {classified}, skipped: {skipped}", file=sys.stderr)
+
+    if token_counts:
+        total_input  = sum(t[0] for t in token_counts)
+        total_output = sum(t[1] for t in token_counts)
+        cost = total_input * _PRICE_INPUT_PER_TOKEN + total_output * _PRICE_OUTPUT_PER_TOKEN
+        print(f"[classifier] 本次標注 {classified} 筆，預估費用約 ${cost:.4f} USD"
+              f"（input {total_input:,} / output {total_output:,} tokens）")
+
     return classified, skipped
 
 
