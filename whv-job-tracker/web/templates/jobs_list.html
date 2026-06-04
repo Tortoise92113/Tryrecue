@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>職缺清單 — WHV 工作分析</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, "Microsoft JhengHei", "Microsoft YaHei", "Segoe UI", Roboto, sans-serif;
+      background: #f0f4f8;
+      color: #222;
+      padding-top: 53px;
+    }
+
+    /* ── Top bar ── */
+    #top-bar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 1000;
+      background: #1a73e8;
+      color: #fff;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+    #top-bar h1 { font-size: 1.15rem; font-weight: 600; }
+    #back-link {
+      margin-left: auto;
+      color: rgba(255,255,255,0.85);
+      text-decoration: none;
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      transition: color 0.12s;
+    }
+    #back-link:hover { color: #fff; }
+
+    /* ── Body row ── */
+    #body {
+      display: flex;
+      min-height: calc(100vh - 53px);
+    }
+
+    /* ── Sidebar ── */
+    #sidebar {
+      width: 180px;
+      flex-shrink: 0;
+      background: #fff;
+      border-right: 1px solid #e0e0e0;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      padding: 16px 0;
+      position: sticky;
+      top: 53px;
+      height: calc(100vh - 53px);
+    }
+    .sidebar-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #999;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      padding: 0 16px 10px;
+    }
+    .city-btn {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      text-align: left;
+      padding: 11px 16px;
+      border: none;
+      border-left: 3px solid transparent;
+      background: none;
+      font-size: 0.9rem;
+      color: #555;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.12s, color 0.12s;
+      gap: 6px;
+    }
+    .city-btn:hover { background: #f0f4f8; color: #222; }
+    .city-btn.active {
+      background: #e8f0fe;
+      color: #1a73e8;
+      font-weight: 600;
+      border-left-color: #1a73e8;
+    }
+    .city-total-badge {
+      font-size: 0.72rem;
+      font-weight: 600;
+      background: #f1f3f4;
+      color: #888;
+      border-radius: 10px;
+      padding: 1px 7px;
+      flex-shrink: 0;
+    }
+    .city-btn.active .city-total-badge {
+      background: #c8d9f8;
+      color: #1a73e8;
+    }
+
+    /* ── Main content ── */
+    #content {
+      flex: 1;
+      padding: 28px 36px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* ── Breadcrumb ── */
+    #breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.88rem;
+      color: #888;
+      flex-wrap: wrap;
+    }
+    #breadcrumb a {
+      color: #1a73e8;
+      text-decoration: none;
+    }
+    #breadcrumb a:hover { text-decoration: underline; }
+    .bc-sep { color: #ccc; }
+    #bc-jobtype { color: #444; font-weight: 600; }
+
+    /* ── List header ── */
+    #list-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    #page-info { font-size: 0.88rem; color: #666; }
+    .per-page-label {
+      font-size: 0.85rem;
+      color: #555;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .per-page-label select {
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 0.85rem;
+      outline: none;
+    }
+    .per-page-label select:focus { border-color: #1a73e8; }
+
+    /* ── Table ── */
+    #table-wrap {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+      overflow: hidden;
+    }
+    #job-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+    #job-table thead tr {
+      background: #f8fafc;
+      border-bottom: 2px solid #e8ecf0;
+    }
+    #job-table th {
+      padding: 11px 14px;
+      text-align: left;
+      font-size: 0.94rem;
+      font-weight: 700;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    #job-table tbody tr {
+      border-bottom: 1px solid #f0f4f8;
+      transition: background 0.1s;
+    }
+    #job-table tbody tr:last-child { border-bottom: none; }
+    #job-table tbody tr:hover { background: #f8fafc; }
+    #job-table td {
+      padding: 11px 14px;
+      vertical-align: middle;
+      color: #444;
+    }
+    .td-title a {
+      color: #1a73e8;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .td-title a:hover { text-decoration: underline; }
+    .no-data { color: #bbb; font-style: italic; }
+    .text-muted { color: #bbb; }
+    .empty-row { text-align: center; padding: 40px; color: #aaa; }
+
+    /* ── Badges ── */
+    .badge {
+      display: inline-block;
+      font-size: 0.78rem;
+      border-radius: 10px;
+      padding: 2px 8px;
+      white-space: nowrap;
+      font-weight: 500;
+    }
+    .badge-yes     { background: #e6f4ea; color: #188038; }
+    .badge-no      { background: #fce8e6; color: #c5221f; }
+    .badge-unknown { background: #f1f3f4; color: #777; }
+
+    .source-chip {
+      display: inline-block;
+      background: #e8f0fe;
+      color: #1a73e8;
+      border-radius: 8px;
+      padding: 2px 8px;
+      font-size: 0.78rem;
+      font-weight: 500;
+    }
+
+    .btn-soft-delete {
+      background: none;
+      border: 1px solid #E8637A;
+      color: #E8637A;
+      border-radius: 6px;
+      padding: 3px 10px;
+      font-size: 0.78rem;
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+    .btn-soft-delete:hover { background: #fce8ed; }
+
+    /* Modal */
+    #modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.38);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+    }
+    #modal-overlay.show { display: flex; }
+    #modal-box {
+      background: #fff;
+      border-radius: 14px;
+      padding: 32px 36px;
+      box-shadow: 0 8px 36px rgba(0,0,0,0.18);
+      min-width: 300px;
+      text-align: center;
+    }
+    #modal-msg { font-size: 1rem; font-weight: 600; color: #222; margin-bottom: 20px; }
+    .modal-btns { display: flex; gap: 12px; justify-content: center; }
+    #modal-yes {
+      background: #E8637A; color: #fff; border: none;
+      border-radius: 8px; padding: 9px 28px;
+      font-size: 0.9rem; font-weight: 600; cursor: pointer;
+      transition: background 0.15s;
+    }
+    #modal-yes:hover { background: #d44f67; }
+    #modal-noo {
+      background: #fff; color: #555; border: 1px solid #ccc;
+      border-radius: 8px; padding: 9px 28px;
+      font-size: 0.9rem; cursor: pointer;
+      transition: background 0.12s;
+    }
+    #modal-noo:hover { background: #f1f3f4; }
+
+    .star-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 1.375rem;
+      line-height: 1;
+      padding: 0;
+      color: #F7D154;
+      transition: transform 0.12s;
+    }
+    .star-btn:hover { transform: scale(1.25); }
+    .star-btn.empty { opacity: 0.35; }
+
+    /* ── Pagination ── */
+    #pagination {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+    }
+    #page-label { font-size: 0.88rem; color: #666; min-width: 60px; text-align: center; }
+    .page-btn {
+      padding: 7px 18px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      background: #fff;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .page-btn:hover:not(:disabled) { background: #e8f0fe; border-color: #1a73e8; color: #1a73e8; }
+    .page-btn:disabled { opacity: 0.4; cursor: default; }
+
+    #job-table tbody tr.viewed { background: #fafafa; }
+    .td-title a.viewed-link { color: #999; }
+  </style>
+</head>
+<body>
+
+<div id="top-bar">
+  <h1>📊 WHV 工作分析</h1>
+  <a href="/" id="back-link"
+     style="position:absolute;left:50%;transform:translateX(-50%);
+            font-size:1.1rem;font-weight:700">← 回主頁</a>
+  <a href="/favorites" style="margin-left:auto;color:rgba(255,255,255,0.9);
+     text-decoration:none;font-size:0.85rem;display:flex;align-items:center;gap:5px;
+     background:rgba(255,255,255,0.15);border-radius:8px;padding:5px 13px;
+     transition:background 0.15s"
+     onmouseover="this.style.background='rgba(255,255,255,0.25)'"
+     onmouseout="this.style.background='rgba(255,255,255,0.15)'">
+    ★ 我的收藏
+  </a>
+  <a href="/deleted" style="color:rgba(255,255,255,0.85);
+     text-decoration:none;font-size:0.85rem;display:flex;align-items:center;gap:5px;
+     background:rgba(255,255,255,0.15);border-radius:8px;padding:5px 13px;
+     transition:background 0.15s"
+     onmouseover="this.style.background='rgba(255,255,255,0.25)'"
+     onmouseout="this.style.background='rgba(255,255,255,0.15)'">
+    🗑 待刪除清單
+  </a>
+</div>
+
+<div id="body">
+
+  <aside id="sidebar">
+    <div class="sidebar-title">城市</div>
+    <nav id="city-nav"></nav>
+  </aside>
+
+  <main id="content">
+
+    <nav id="breadcrumb">
+      <a href="/">WHV 工作分析</a>
+      <span class="bc-sep">›</span>
+      <a href="/analysis" id="bc-city"></a>
+      <span class="bc-sep">›</span>
+      <span id="bc-jobtype"></span>
+    </nav>
+
+    <div id="list-header">
+      <span id="page-info"></span>
+      <label class="per-page-label">每頁顯示
+        <select id="per-page">
+          <option value="10" selected>10 筆</option>
+          <option value="20">20 筆</option>
+          <option value="50">50 筆</option>
+        </select>
+      </label>
+    </div>
+
+    <div id="table-wrap">
+      <table id="job-table">
+        <thead>
+          <tr>
+            <th>職缺名稱</th>
+            <th>公司</th>
+            <th>地點</th>
+            <th>薪資</th>
+            <th>WHV</th>
+            <th>可集簽</th>
+            <th>來源</th>
+            <th>讚啦</th>
+            <th>刪除</th>
+          </tr>
+        </thead>
+        <tbody id="job-tbody">
+          <tr><td colspan="9" class="empty-row">載入中…</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div id="pagination">
+      <button class="page-btn" id="btn-prev" disabled>上一頁</button>
+      <span id="page-label">—</span>
+      <button class="page-btn" id="btn-next" disabled>下一頁</button>
+    </div>
+
+  </main>
+</div>
+
+<!-- Confirm modal -->
+<div id="modal-overlay">
+  <div id="modal-box">
+    <div id="modal-msg">Are you sure?</div>
+    <div class="modal-btns">
+      <button id="modal-yes">Yes</button>
+      <button id="modal-noo">Noo</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const CITY     = {{ city | tojson }};
+const JOB_TYPE = {{ job_type | tojson }};
+
+const TYPE_LABELS = {
+  hospitality: '餐飲/服務',
+  hotel:       '飯店/住宿',
+  office:      '行政/辦公',
+  retail:      '零售',
+  other:       '其他',
+  farm:        '農業/農場',
+  unknown:     '未分類',
+};
+
+const SOURCE_LABELS = {
+  adzuna:               'Adzuna',
+  backpacker_job_board: 'Backpacker JB',
+  jora:                 'Jora',
+};
+
+const LS_KEY = "whv_viewed_jobs";
+function getViewedJobs() {
+  try { return new Set(JSON.parse(localStorage.getItem(LS_KEY) || "[]")); }
+  catch { return new Set(); }
+}
+function markViewed(id) {
+  const set = getViewedJobs();
+  set.add(String(id));
+  localStorage.setItem(LS_KEY, JSON.stringify([...set]));
+}
+
+let allJobs = [];
+let page    = 1;
+let perPage = 10;
+
+function escHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function formatSalary(min, max) {
+  if (!min && !max) return '<span class="no-data">未標示</span>';
+  const fmt = n => '$' + Number(n).toLocaleString();
+  if (min && max) return `${fmt(min)} – ${fmt(max)}`;
+  return fmt(min || max);
+}
+
+function whvBadge(val) {
+  if (val === 1)    return '<span class="badge badge-yes">✅ 是</span>';
+  if (val === 0)    return '<span class="badge badge-no">❌ 否</span>';
+  return '<span class="badge badge-unknown">？ 未知</span>';
+}
+
+function regionalBadge(val) {
+  return val === 1
+    ? '<span class="badge badge-yes">✅ 是</span>'
+    : '<span class="text-muted">—</span>';
+}
+
+function renderTable() {
+  const total      = allJobs.length;
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
+  const start      = (page - 1) * perPage;
+  const pageJobs   = allJobs.slice(start, start + perPage);
+
+  document.getElementById('page-info').textContent  = `第 ${page} 頁，共 ${total} 筆`;
+  document.getElementById('page-label').textContent = `${page} / ${totalPages}`;
+  document.getElementById('btn-prev').disabled = page <= 1;
+  document.getElementById('btn-next').disabled = page >= totalPages;
+
+  const tbody = document.getElementById('job-tbody');
+  if (!pageJobs.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty-row">本分類目前無職缺資料</td></tr>';
+    return;
+  }
+
+  const viewedSet = getViewedJobs();
+
+  tbody.innerHTML = pageJobs.map(j => {
+    const viewed = viewedSet.has(String(j.id));
+    return `
+    <tr class="${viewed ? 'viewed' : ''}">
+      <td class="td-title">
+        <a href="${escHtml(j.url || '#')}" target="_blank" rel="noopener"
+           class="${viewed ? 'viewed-link' : ''}" data-job-id="${escHtml(j.id)}">${escHtml(j.title)}</a>
+      </td>
+      <td>${escHtml(j.company || '—')}</td>
+      <td>${escHtml(j.location || '—')}</td>
+      <td>${formatSalary(j.salary_min, j.salary_max)}</td>
+      <td>${whvBadge(j.is_whv_friendly)}</td>
+      <td>${regionalBadge(j.regional_area)}</td>
+      <td><span class="source-chip">${escHtml(SOURCE_LABELS[j.source] ?? j.source ?? '—')}</span></td>
+      <td>
+        <button class="star-btn ${j.is_favorite ? '' : 'empty'}"
+                data-job-id="${escHtml(j.id)}">
+          ${j.is_favorite ? '★' : '☆'}
+        </button>
+      </td>
+      <td>
+        <button class="btn-soft-delete" data-job-id="${escHtml(j.id)}">刪除</button>
+      </td>
+    </tr>
+  `; }).join('');
+
+  document.querySelectorAll('.td-title a[data-job-id]').forEach(a => {
+    a.addEventListener('click', () => {
+      markViewed(a.dataset.jobId);
+      a.classList.add('viewed-link');
+      const tr = a.closest('tr');
+      if (tr) tr.classList.add('viewed');
+    });
+  });
+
+  document.querySelectorAll('.btn-soft-delete').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const jobId = btn.dataset.jobId;
+      await fetch(`/api/jobs/${jobId}/soft_delete`, { method: 'POST' });
+      allJobs = allJobs.filter(j => j.id !== jobId);
+      if (page > Math.max(1, Math.ceil(allJobs.length / perPage))) page--;
+      renderTable();
+    });
+  });
+
+  document.querySelectorAll('.star-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const jobId = btn.dataset.jobId;
+      const { is_favorite } = await fetch(`/api/jobs/${jobId}/favorite`, { method: 'POST' }).then(r => r.json());
+      const job = allJobs.find(j => j.id === jobId);
+      if (job) job.is_favorite = is_favorite;
+      btn.textContent = is_favorite ? '★' : '☆';
+      btn.classList.toggle('empty', !is_favorite);
+    });
+  });
+}
+
+// ── Modal ──────────────────────────────────────────────────────────────────────
+let _modalCb = null;
+function showModal(cb) {
+  _modalCb = cb;
+  document.getElementById('modal-overlay').classList.add('show');
+}
+document.getElementById('modal-yes').addEventListener('click', () => {
+  document.getElementById('modal-overlay').classList.remove('show');
+  if (_modalCb) { _modalCb(); _modalCb = null; }
+});
+document.getElementById('modal-noo').addEventListener('click', () => {
+  document.getElementById('modal-overlay').classList.remove('show');
+  _modalCb = null;
+});
+
+async function init() {
+  document.title = `${CITY} · ${TYPE_LABELS[JOB_TYPE] ?? JOB_TYPE} — WHV 工作分析`;
+  document.getElementById('bc-city').textContent    = CITY;
+  document.getElementById('bc-jobtype').textContent = TYPE_LABELS[JOB_TYPE] ?? JOB_TYPE;
+
+  const cities = await fetch('/api/analysis/cities').then(r => r.json());
+  document.getElementById('city-nav').innerHTML = cities.map(({ city, total }) => `
+    <a class="city-btn ${city === CITY ? 'active' : ''}" href="/analysis">
+      <span>${escHtml(city)}</span>
+      <span class="city-total-badge">${total}</span>
+    </a>
+  `).join('');
+
+  allJobs = await fetch(
+    `/api/analysis/jobs/${encodeURIComponent(JOB_TYPE)}/${encodeURIComponent(CITY)}`
+  ).then(r => r.json());
+
+  renderTable();
+}
+
+document.getElementById('per-page').addEventListener('change', e => {
+  perPage = Number(e.target.value);
+  page = 1;
+  renderTable();
+});
+document.getElementById('btn-prev').addEventListener('click', () => { page--; renderTable(); });
+document.getElementById('btn-next').addEventListener('click', () => { page++; renderTable(); });
+
+init();
+</script>
+
+</body>
+</html>

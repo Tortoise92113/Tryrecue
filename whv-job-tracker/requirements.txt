@@ -1,0 +1,9 @@
+requests
+beautifulsoup4
+python-dotenv
+google-generativeai
+playwright
+flask
+apscheduler
+pyyaml
+pytz

@@ -1,0 +1,37 @@
+# 私人設定
+config.yml
+
+# gstack / Claude Code 工具資料
+.gstack/
+.claude/
+
+# 資料庫（個人資料）
+*.db
+*.sqlite
+*.sqlite3
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# 虛擬環境
+venv/
+.venv/
+env/
+
+# 系統檔
+.DS_Store
+Thumbs.db
+
+# Log
+*.log
+
+# Playwright
+playwright-report/

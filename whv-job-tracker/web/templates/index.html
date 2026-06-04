@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WHV Job Tracker</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f0f4f8;
+      color: #222;
+      min-height: 100vh;
+      padding-top: 160px;
+    }
+
+    header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 1000;
+      background: #1a73e8;
+      color: #fff;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    header h1 { font-size: 1.25rem; font-weight: 600; }
+    header .sub { font-size: 1.05rem; font-weight: 700; opacity: 0.95; margin-left: auto; }
+
+    #stats-bar {
+      position: fixed;
+      left: 0;
+      right: 0;
+      z-index: 998;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding: 18px 24px;
+      background: #fff;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    .stat-chip {
+      background: #e8f0fe;
+      color: #1a73e8;
+      border-radius: 16px;
+      padding: 4px 12px;
+      font-size: 0.82rem;
+      font-weight: 500;
+      border: 1px solid transparent;
+    }
+    .stat-chip.green  { background: #e6f4ea; color: #188038; }
+    .stat-chip.teal   { background: #e0f2f1; color: #00796b; }
+    .stat-chip.grey   { background: #f1f3f4; color: #555; }
+    .stat-chip.source {
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.15s, color 0.15s;
+    }
+    .stat-chip.source:hover { background: #e0e0e0; }
+    .stat-chip.source.active { background: #555; color: #f1f3f4; border-color: #555; }
+    #stat-total.view-active    { background: #1a73e8; color: #e8f0fe; border-color: #1a73e8; }
+    #stat-whv.view-active      { background: #188038; color: #e6f4ea; border-color: #188038; }
+    #stat-regional.view-active { background: #00796b; color: #e0f2f1; border-color: #00796b; }
+    .stat-chip.clickable { cursor: pointer; user-select: none; transition: opacity 0.15s; }
+    .stat-chip.clickable:hover { opacity: 0.75; }
+
+    #filters {
+      position: fixed;
+      top: 57px;
+      left: 0;
+      right: 0;
+      z-index: 999;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 24px;
+      background: #fff;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    #filters label { font-size: 1.1rem; font-weight: 700; color: #333; display: flex; flex-direction: column; gap: 8px; }
+    #filters select, #filters input[type=text] {
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: 0.85rem;
+      outline: none;
+    }
+    #filters select:focus, #filters input:focus { border-color: #1a73e8; }
+
+    #view-btn-group { display: flex; align-self: flex-end; }
+    .view-btn {
+      padding: 5px 14px;
+      border: 1px solid #ccc;
+      background: #fff;
+      font-size: 0.85rem;
+      cursor: pointer;
+      color: #555;
+      transition: background 0.15s, color 0.15s;
+    }
+    .view-btn:first-child { border-radius: 6px 0 0 6px; }
+    .view-btn:last-child  { border-radius: 0 6px 6px 0; }
+    .view-btn + .view-btn { border-left: none; }
+    .view-btn.active-all      { background: #f1f3f4; color: #333; }
+    .view-btn.active-whv      { background: #1a73e8; color: #fff; border-color: #1a73e8; }
+    .view-btn.active-regional { background: #5BC8A0; color: #fff; border-color: #5BC8A0; }
+
+    #filter-count {
+      margin-left: auto;
+      align-self: center;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #444;
+    }
+
+    #job-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 14px;
+      padding: 20px 24px;
+    }
+
+    .job-card {
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.10);
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      transition: box-shadow 0.15s;
+    }
+    .job-card:hover { box-shadow: 0 3px 12px rgba(0,0,0,0.14); }
+    .job-card.whv-friendly  { border-left: 4px solid #188038; }
+    .job-card.state-saved   { border-left: 4px solid #f9ab00; }
+    .job-card.state-applied { border-left: 4px solid #1a73e8; }
+
+    .card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .job-title { font-weight: 600; font-size: 0.95rem; line-height: 1.3; }
+    .job-title a { color: #1a73e8; text-decoration: none; }
+    .job-title a:hover { text-decoration: underline; }
+
+    .badge {
+      font-size: 0.68rem;
+      font-weight: 600;
+      border-radius: 10px;
+      padding: 2px 8px;
+      white-space: nowrap;
+    }
+    .badge-whv       { background: #e6f4ea; color: #188038; }
+    .badge-urgent    { background: #fce8e6; color: #c5221f; }
+    .badge-source    { background: #e8f0fe; color: #1a73e8; }
+    .badge-regional  { background: #e0f2f1; color: #00796b; }
+    .badge-regional-unknown { background: #f5f5f5; color: #777; }
+    .badge-jobtype   { background: #fef3e2; color: #b45309; }
+    .badge-viewed    { background: #fff; color: #aaa; border: 1px solid #ddd; font-weight: 400; }
+    .job-card.viewed:not(.whv-friendly):not(.state-saved):not(.state-applied) { border-left: 3px solid #ddd; }
+    .job-title a.viewed-link { color: #999; }
+
+    .job-meta {
+      font-size: 0.8rem;
+      color: #666;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .job-meta span::before { content: "• "; color: #bbb; }
+    .job-meta span:first-child::before { content: ""; }
+
+    .job-note {
+      font-size: 0.78rem;
+      color: #555;
+      font-style: italic;
+      border-top: 1px solid #f0f0f0;
+      padding-top: 6px;
+    }
+
+    .card-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+    .icon-chip {
+      background: #f1f3f4;
+      border-radius: 8px;
+      padding: 2px 8px;
+      font-size: 0.75rem;
+      color: #555;
+    }
+
+    .card-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 4px;
+      flex-wrap: wrap;
+    }
+    .action-btn {
+      font-size: 0.75rem;
+      padding: 3px 10px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      background: #fff;
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+    .action-btn:hover              { background: #f1f3f4; }
+    .action-btn.btn-saved          { border-color: #f9ab00; color: #856404; }
+    .action-btn.btn-saved.active   { background: #fff8dc; color: #c8940a; border-color: #F7D154; }
+    .action-btn.btn-applied        { border-color: #1a73e8; color: #1a73e8; }
+    .action-btn.btn-applied.active { background: #e8f0fe; }
+    .action-btn.btn-hidden         { border-color: #ccc; color: #888; }
+
+    #empty-msg {
+      grid-column: 1/-1;
+      text-align: center;
+      padding: 60px 0;
+      color: #888;
+      font-size: 0.95rem;
+    }
+    #search-box { flex: 4; min-width: 320px; max-width: 860px; margin-top: 14px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🦘 WHV Job Tracker</h1>
+  <span class="sub">Hi, {{ user_name }} · Australia</span>
+  <a href="/favorites" style="margin-left:auto;color:rgba(255,255,255,0.9);
+     text-decoration:none;font-size:0.85rem;display:flex;align-items:center;gap:5px;
+     background:rgba(255,255,255,0.15);border-radius:8px;padding:5px 13px;
+     transition:background 0.15s"
+     onmouseover="this.style.background='rgba(255,255,255,0.25)'"
+     onmouseout="this.style.background='rgba(255,255,255,0.15)'">
+    ★ 我的收藏
+  </a>
+  <a href="/deleted" style="color:rgba(255,255,255,0.9);color:rgba(255,255,255,0.9);
+     text-decoration:none;font-size:0.85rem;display:flex;align-items:center;gap:5px;
+     background:rgba(255,255,255,0.15);border-radius:8px;padding:5px 13px;
+     transition:background 0.15s"
+     onmouseover="this.style.background='rgba(255,255,255,0.25)'"
+     onmouseout="this.style.background='rgba(255,255,255,0.15)'">
+    🗑 待刪除清單
+  </a>
+  <a href="/analysis" style="color:rgba(255,255,255,0.9);
+     text-decoration:none;font-size:0.85rem;display:flex;align-items:center;gap:5px;
+     background:rgba(255,255,255,0.15);border-radius:8px;padding:5px 13px;
+     transition:background 0.15s"
+     onmouseover="this.style.background='rgba(255,255,255,0.25)'"
+     onmouseout="this.style.background='rgba(255,255,255,0.15)'">
+    📊 圓餅圖分析
+  </a>
+</header>
+
+<div id="stats-bar">
+  <span class="stat-chip clickable" id="stat-total">Loading…</span>
+  <span class="stat-chip green clickable view-active" id="stat-whv"></span>
+  <span class="stat-chip teal clickable" id="stat-regional"></span>
+  <span class="stat-chip grey source" id="stat-adzuna"></span>
+  <span class="stat-chip grey source" id="stat-bjb"></span>
+  <span class="stat-chip grey source" id="stat-jora"></span>
+</div>
+
+<div id="filters">
+  <label>City
+    <select id="filter-city">
+      <option value="">All cities</option>
+      {% for city in cities %}
+      <option value="{{ city }}">{{ city }}</option>
+      {% endfor %}
+    </select>
+  </label>
+
+  <label>Job type
+    <select id="filter-jobtype">
+      <option value="hospitality,hotel,retail">Hospitality / Hotel / Retail</option>
+      <option value="" selected>All types</option>
+      <option value="hospitality">Hospitality</option>
+      <option value="hotel">Hotel</option>
+      <option value="retail">Retail</option>
+      <option value="farm">Farm</option>
+      <option value="office">Office</option>
+      <option value="other">Other</option>
+    </select>
+  </label>
+
+  <label>State
+    <select id="filter-state">
+      <option value="">All</option>
+      <option value="new">New</option>
+      <option value="saved">Saved</option>
+      <option value="applied">Applied</option>
+    </select>
+  </label>
+
+  <input type="text" id="search-box" placeholder="🔍 Search title / company..." />
+
+  <span id="filter-count"></span>
+</div>
+
+<div id="job-list">
+  <div id="empty-msg">Loading jobs…</div>
+</div>
+
+<script>
+  // ── Viewed jobs (localStorage) ────────────────────────────────────────────
+  const LS_KEY = "whv_viewed_jobs";
+  function getViewedJobs() {
+    try { return new Set(JSON.parse(localStorage.getItem(LS_KEY) || "[]")); }
+    catch { return new Set(); }
+  }
+  function markViewed(id) {
+    const set = getViewedJobs();
+    set.add(String(id));
+    localStorage.setItem(LS_KEY, JSON.stringify([...set]));
+  }
+  let _viewedSet = getViewedJobs();
+
+  // viewFilter: 'all' | 'whv' | 'regional'  (預設 WHV 友善)
+  const state = {
+    city: "",
+    viewFilter: "whv",
+    jobTypes: "",
+    stateFilter: "",
+    query: "",
+    sourceFilter: null,
+  };
+
+  const SOURCE_CHIP_MAP = {
+    'stat-adzuna': 'adzuna',
+    'stat-bjb':    'backpacker_job_board',
+    'stat-jora':   'jora',
+  };
+
+  Object.entries(SOURCE_CHIP_MAP).forEach(([chipId, src]) => {
+    document.getElementById(chipId).addEventListener('click', () => {
+      state.sourceFilter = (state.sourceFilter === src) ? null : src;
+      Object.entries(SOURCE_CHIP_MAP).forEach(([id, s]) => {
+        document.getElementById(id).classList.toggle('active', s === state.sourceFilter);
+      });
+      renderJobs();
+    });
+  });
+
+  const VIEW_CHIP_IDS = ['stat-total', 'stat-whv', 'stat-regional'];
+  function _setViewChip(activeId) {
+    VIEW_CHIP_IDS.forEach(id =>
+      document.getElementById(id).classList.toggle('view-active', id === activeId));
+  }
+
+  document.getElementById("stat-total").addEventListener("click", () => {
+    state.city        = "";
+    state.viewFilter  = "all";
+    state.jobTypes    = "";
+    state.stateFilter = "";
+    state.query       = "";
+    state.sourceFilter = null;
+    document.getElementById("filter-city").value    = "";
+    document.getElementById("filter-jobtype").value = "";
+    document.getElementById("filter-state").value   = "";
+    document.getElementById("search-box").value     = "";
+    _setViewChip('stat-total');
+    Object.keys(SOURCE_CHIP_MAP).forEach(id =>
+      document.getElementById(id).classList.remove('active'));
+    loadJobs();
+    loadStats();
+  });
+
+  document.getElementById("stat-whv").addEventListener("click", () => {
+    state.viewFilter = "whv";
+    _setViewChip('stat-whv');
+    loadJobs();
+    loadStats();
+  });
+
+  document.getElementById("stat-regional").addEventListener("click", () => {
+    state.viewFilter = "regional";
+    _setViewChip('stat-regional');
+    loadJobs();
+    loadStats();
+  });
+  let allJobs = [];
+  let _dbTotal = 0;
+
+  async function loadStats() {
+    const params = state.viewFilter === 'whv' ? "?whv_only=1" : "";
+    const s = await fetch("/api/stats" + params).then(r => r.json());
+    _dbTotal = s.total;
+    document.getElementById("stat-total").textContent    = `全站共 ${s.total} 筆`;
+    document.getElementById("stat-whv").textContent      = `WHV 友善 ${s.whv_friendly} 筆`;
+    document.getElementById("stat-regional").textContent = `可集簽 ${s.regional ?? 0} 筆`;
+    document.getElementById("stat-adzuna").textContent   = "Adzuna";
+    document.getElementById("stat-bjb").textContent      = "BJB";
+    document.getElementById("stat-jora").textContent     = "Jora";
+  }
+
+  async function loadJobs() {
+    const params = new URLSearchParams();
+    if (state.city)        params.set("city", state.city);
+    if (state.viewFilter === 'whv') params.set("whv_only", "1");
+    if (state.jobTypes)    params.set("job_types", state.jobTypes);
+    if (state.stateFilter) params.set("state", state.stateFilter);
+    params.set("limit", "1000");
+    allJobs = await fetch("/api/jobs?" + params).then(r => r.json());
+    renderJobs();
+  }
+
+  function renderJobs() {
+    _viewedSet = getViewedJobs();
+    let jobs = allJobs;
+    const q = state.query.toLowerCase();
+    if (q) {
+      jobs = jobs.filter(j =>
+        (j.title || "").toLowerCase().includes(q) ||
+        (j.company || "").toLowerCase().includes(q));
+    }
+    if (state.viewFilter === 'regional') {
+      jobs = jobs.filter(j => j.regional_area === 1);
+    }
+    if (state.sourceFilter) {
+      jobs = jobs.filter(j => j.source === state.sourceFilter);
+    }
+
+    document.getElementById("filter-count").textContent =
+      `${jobs.length} / ${_dbTotal} jobs`;
+
+    const list = document.getElementById("job-list");
+    if (!jobs.length) {
+      list.innerHTML = '<div id="empty-msg">No jobs found for the selected filters.</div>';
+      return;
+    }
+
+    list.innerHTML = jobs.map(j => jobCard(j)).join("");
+
+    list.querySelectorAll(".action-btn[data-favorite]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const jobId = btn.dataset.jobId;
+        const { is_favorite } = await fetch(`/api/jobs/${jobId}/favorite`, { method: "POST" }).then(r => r.json());
+        const job = allJobs.find(j => j.id === jobId);
+        if (job) job.is_favorite = is_favorite;
+        btn.textContent = is_favorite ? "★ Saved" : "☆ Save";
+        btn.classList.toggle("active", !!is_favorite);
+        const card = btn.closest(".job-card");
+        if (card) card.classList.toggle("state-saved", !!is_favorite);
+      });
+    });
+
+    list.querySelectorAll(".action-btn[data-hide]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const jobId = btn.dataset.jobId;
+        await fetch(`/api/jobs/${jobId}/soft_delete`, { method: "POST" });
+        const card = btn.closest(".job-card");
+        if (card) card.remove();
+        allJobs = allJobs.filter(j => j.id !== jobId);
+        document.getElementById("filter-count").textContent =
+          allJobs.length ? `${allJobs.length} jobs` : "";
+        loadStats();
+      });
+    });
+
+    list.querySelectorAll(".job-title a[data-job-id]").forEach(a => {
+      a.addEventListener("click", () => {
+        markViewed(a.dataset.jobId);
+        a.classList.add("viewed-link");
+        const card = a.closest(".job-card");
+        if (card) card.classList.add("viewed");
+      });
+    });
+
+    list.querySelectorAll(".action-btn[data-action]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const jobId  = btn.dataset.jobId;
+        const action = btn.dataset.action;
+        const job    = allJobs.find(j => j.id === jobId);
+        const newState = (job && job.user_state === action) ? "new" : action;
+        await fetch(`/api/jobs/${jobId}/state`, {
+          method: "POST",
+          body: JSON.stringify({ state: newState }),
+        });
+        await loadJobs();
+        await loadStats();
+      });
+    });
+  }
+
+  function regionalBadge(val) {
+    if (val === 1)    return '<span class="badge badge-regional">✅ 可集簽</span>';
+    if (val === null) return '<span class="badge badge-regional-unknown">？ 待確認</span>';
+    return "";
+  }
+
+  function urgencyBadge(u) {
+    return u === "high" ? '<span class="badge badge-urgent">🔴 URGENT</span>' : "";
+  }
+
+  function sourceBadge(src) {
+    const map = { adzuna: "Adzuna", backpacker_job_board: "Backpacker JB", jora: "Jora" };
+    return `<span class="badge badge-source">${map[src] ?? src}</span>`;
+  }
+
+  function jobtypeBadge(jt) {
+    if (!jt || jt === "other") return "";
+    return `<span class="badge badge-jobtype">${jt}</span>`;
+  }
+
+  function jobCard(j) {
+    const viewed     = _viewedSet.has(String(j.id));
+    const whvClass   = j.is_whv_friendly ? "whv-friendly" : "";
+    const stateClass = j.is_favorite ? "state-saved"
+                     : j.user_state !== "new" ? `state-${j.user_state}` : "";
+    const viewedClass = viewed ? "viewed" : "";
+    const whvBadge   = j.is_whv_friendly ? '<span class="badge badge-whv">WHV ✓</span>' : "";
+    const viewedBadge = viewed ? '<span class="badge badge-viewed">已查看</span>' : "";
+    const linkClass  = viewed ? "viewed-link" : "";
+    const savedActive   = j.is_favorite ? "active" : "";
+    const appliedActive = j.user_state === "applied" ? "active" : "";
+
+    const chips = [
+      j.visa_sponsorship ? '<span class="icon-chip">🛂 Sponsorship</span>' : "",
+      j.accommodation    ? '<span class="icon-chip">🏠 Accommodation</span>' : "",
+    ].filter(Boolean).join("");
+
+    return `
+    <div class="job-card ${whvClass} ${stateClass} ${viewedClass}">
+      <div class="card-top">
+        <div class="job-title">
+          <a href="${j.url || '#'}" target="_blank" rel="noopener" class="${linkClass}" data-job-id="${j.id}">${esc(j.title)}</a>
+        </div>
+        <div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;align-items:center">
+          ${viewedBadge}
+          ${whvBadge}
+          ${urgencyBadge(j.urgency)}
+          ${sourceBadge(j.source)}
+        </div>
+      </div>
+      <div class="job-meta">
+        <span>${esc(j.company || '—')}</span>
+        <span>${esc(j.city || j.location || '—')}</span>
+        ${j.posted_at ? `<span>${j.posted_at.slice(0,10)}</span>` : ""}
+      </div>
+      <div class="card-chips">
+        ${regionalBadge(j.regional_area)}
+        ${jobtypeBadge(j.job_type)}
+        ${chips}
+      </div>
+      ${j.classifier_note ? `<div class="job-note">${esc(j.classifier_note)}</div>` : ""}
+      <div class="card-actions">
+        <button class="action-btn btn-saved ${savedActive}"
+                data-favorite data-job-id="${j.id}">
+          ${savedActive ? "★ Saved" : "☆ Save"}
+        </button>
+        <button class="action-btn btn-applied ${appliedActive}"
+                data-action="applied" data-job-id="${j.id}">
+          ${appliedActive ? "✓ Applied" : "Apply"}
+        </button>
+        <button class="action-btn btn-hidden"
+                data-hide data-job-id="${j.id}">Hide</button>
+      </div>
+    </div>`;
+  }
+
+  function esc(str) {
+    return String(str ?? "")
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  // ── Filter wiring ──────────────────────────────────────────────────────────
+  document.getElementById("filter-city").addEventListener("change", e => {
+    state.city = e.target.value; loadJobs();
+  });
+  document.getElementById("filter-jobtype").addEventListener("change", e => {
+    state.jobTypes = e.target.value; loadJobs();
+  });
+  document.getElementById("filter-state").addEventListener("change", e => {
+    state.stateFilter = e.target.value; loadJobs();
+  });
+  let _searchTimer = null;
+  document.getElementById("search-box").addEventListener("input", e => {
+    state.query = e.target.value;
+    clearTimeout(_searchTimer);
+    _searchTimer = setTimeout(renderJobs, 200);
+  });
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  function adjustLayout() {
+    const filterBar = document.getElementById('filters');
+    const statsBar  = document.getElementById('stats-bar');
+    const statsTop  = filterBar.getBoundingClientRect().bottom;
+    statsBar.style.top = statsTop + 'px';
+    document.body.style.paddingTop = (statsTop + statsBar.offsetHeight) + 'px';
+  }
+  window.addEventListener('load', adjustLayout);
+  window.addEventListener('resize', adjustLayout);
+
+  loadStats();
+  loadJobs();
+</script>
+
+</body>
+</html>

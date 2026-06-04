@@ -1,0 +1,45 @@
+user_name: "Your Name"
+
+search:
+  keywords:
+    - waiter
+    - barista
+    - kitchen hand
+    - cafe
+    - restaurant
+    - hotel housekeeping
+    - front desk
+    - assistant
+  cities:
+    - Cairns
+    - Darwin
+    - Townsville
+    - Broome
+    - Alice Springs
+  max_results_per_query: 50
+
+adzuna:
+  app_id: YOUR_ADZUNA_APP_ID
+  app_key: YOUR_ADZUNA_APP_KEY
+
+backpacker_job_board:
+  enabled: true
+  max_results: 100
+
+gemini:
+  api_key: YOUR_GEMINI_API_KEY
+  model: gemini-2.5-flash
+
+email:
+  smtp_server: smtp.gmail.com
+  smtp_port: 587
+  sender: your_email@gmail.com
+  app_password: YOUR_GMAIL_APP_PASSWORD
+  recipients:
+    - recipient@gmail.com
+
+schedule:
+  run_time: "10:00"
+  timezone: "Australia/Darwin"
+
+jora_scraping: true

@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WHV 工作分析</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, "Microsoft JhengHei", "Microsoft YaHei", "Segoe UI", Roboto, sans-serif;
+      background: #f0f4f8;
+      color: #222;
+      padding-top: 53px;
+    }
+
+    /* ── Top bar ── */
+    #top-bar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 1000;
+      background: #1a73e8;
+      color: #fff;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+    #top-bar h1 { font-size: 1.15rem; font-weight: 600; }
+    #back-link {
+      margin-left: auto;
+      color: rgba(255,255,255,0.85);
+      text-decoration: none;
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      transition: color 0.12s;
+    }
+    #back-link:hover { color: #fff; }
+
+    /* ── Body row ── */
+    #body {
+      height: calc(100vh - 53px);
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar ── */
+    #sidebar {
+      width: 180px;
+      flex-shrink: 0;
+      background: #fff;
+      border-right: 1px solid #e0e0e0;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      padding: 16px 0;
+    }
+    .sidebar-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #999;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      padding: 0 16px 10px;
+    }
+    .city-btn {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      text-align: left;
+      padding: 11px 16px;
+      border: none;
+      border-left: 3px solid transparent;
+      background: none;
+      font-size: 0.9rem;
+      color: #555;
+      cursor: pointer;
+      transition: background 0.12s, color 0.12s;
+      gap: 6px;
+    }
+    .city-btn:hover { background: #f0f4f8; color: #222; }
+    .city-btn.active {
+      background: #e8f0fe;
+      color: #1a73e8;
+      font-weight: 600;
+      border-left-color: #1a73e8;
+    }
+    .city-total-badge {
+      font-size: 0.72rem;
+      font-weight: 600;
+      background: #f1f3f4;
+      color: #888;
+      border-radius: 10px;
+      padding: 1px 7px;
+      flex-shrink: 0;
+    }
+    .city-btn.active .city-total-badge {
+      background: #c8d9f8;
+      color: #1a73e8;
+    }
+
+    /* ── Main content ── */
+    #content {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 36px 44px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+
+    #city-heading {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #1a1a1a;
+      margin-bottom: 4px;
+    }
+    #city-subtitle {
+      font-size: 0.88rem;
+      color: #aaa;
+      margin-bottom: 32px;
+      font-style: italic;
+    }
+    #city-total-line {
+      font-size: 1rem;
+      color: #666;
+      margin-bottom: 4px;
+    }
+
+    /* ── Chart card ── */
+    #chart-outer {
+      display: flex;
+      justify-content: center;
+    }
+
+    #chart-card {
+      background: #fff;
+      border-radius: 16px;
+      padding: 36px 44px;
+      display: inline-flex;
+      align-items: center;
+      gap: 56px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+    }
+
+    #donut-wrap {
+      width: 507px;
+      height: 507px;
+      flex-shrink: 0;
+      position: relative;
+    }
+    #donut-wrap canvas {
+      width: 507px !important;
+      height: 507px !important;
+    }
+
+    /* ── Legend ── */
+    #legend-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 280px;
+    }
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 1.3rem;
+      color: #444;
+      padding: 6px 10px;
+      border-radius: 6px;
+      cursor: default;
+      transition: background 0.1s;
+    }
+    .legend-row:hover { background: #f5f7fa; }
+    .legend-swatch {
+      width: 18px;
+      height: 18px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+    .legend-label {
+      flex: 1;
+      white-space: nowrap;
+    }
+    .legend-count {
+      width: 63px;
+      text-align: right;
+      color: #666;
+      font-variant-numeric: tabular-nums;
+    }
+    .legend-pct {
+      width: 72px;
+      text-align: right;
+      font-weight: 600;
+      color: #333;
+      font-variant-numeric: tabular-nums;
+    }
+  </style>
+</head>
+<body>
+
+<div id="top-bar">
+  <h1>📊 WHV 工作分析</h1>
+  <a href="/" id="back-link">← 回主頁</a>
+</div>
+
+<div id="body">
+
+  <!-- 左側城市選單 -->
+  <aside id="sidebar">
+    <div class="sidebar-title">城市</div>
+    <nav id="city-nav"></nav>
+  </aside>
+
+  <!-- 右側主區域 -->
+  <main id="content">
+    <h2 id="city-heading">—</h2>
+    <div id="city-total-line"></div>
+    <div id="city-subtitle"></div>
+
+    <div id="chart-outer">
+      <div id="chart-card">
+        <div id="donut-wrap">
+          <canvas id="donut-canvas"></canvas>
+        </div>
+        <div id="legend-wrap"></div>
+      </div>
+    </div>
+  </main>
+
+</div>
+
+<script>
+// ── 配色 ──────────────────────────────────────────────────────────────────────
+const TYPE_COLORS = {
+  hospitality: '#4A90D9',
+  other:       '#5BC8A0',
+  office:      '#F4A742',
+  hotel:       '#E8637A',
+  retail:      '#A78BDB',
+  farm:        '#F7D154',
+  unknown:     '#B0B0B0',
+};
+const DEFAULT_COLOR = '#64C8E8';
+
+const TYPE_LABELS = {
+  hospitality: '餐飲/服務',
+  hotel:       '飯店/住宿',
+  office:      '行政/辦公',
+  retail:      '零售',
+  other:       '其他',
+  farm:        '農業/農場',
+  unknown:     '未分類',
+};
+
+// ── 中心數字 Plugin ────────────────────────────────────────────────────────────
+const centerTextPlugin = {
+  id: 'centerText',
+  afterDraw(chart) {
+    const { ctx, chartArea } = chart;
+    if (!chartArea) return;
+    const cx = (chartArea.left + chartArea.right) / 2;
+    const cy = (chartArea.top + chartArea.bottom) / 2;
+    const total = chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#2a2a2a';
+    ctx.font = 'bold 39px -apple-system, "Microsoft JhengHei", sans-serif';
+    ctx.fillText(total, cx, cy - 16);
+    ctx.font = 'bold 20px -apple-system, "Microsoft JhengHei", sans-serif';
+    ctx.fillStyle = '#999';
+    ctx.fillText('筆', cx, cy + 22);
+    ctx.restore();
+  },
+};
+
+// ── 狀態 ──────────────────────────────────────────────────────────────────────
+let cityList = [];   // [{ city, total }]
+let activeCity = '';
+let chartInstance = null;
+
+// ── 工具 ──────────────────────────────────────────────────────────────────────
+function escHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function formatDate(isoStr) {
+  if (!isoStr) return '—';
+  const d = new Date(isoStr);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())} `
+       + `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`;
+}
+
+// ── 城市選單 ──────────────────────────────────────────────────────────────────
+function renderNav() {
+  const nav = document.getElementById('city-nav');
+  nav.innerHTML = cityList.map(({ city, total }) => `
+    <button class="city-btn ${city === activeCity ? 'active' : ''}"
+            data-city="${escHtml(city)}">
+      <span>${escHtml(city)}</span>
+      <span class="city-total-badge">${total}</span>
+    </button>
+  `).join('');
+
+  nav.querySelectorAll('.city-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activeCity = btn.dataset.city;
+      renderNav();
+      renderChart(activeCity);
+    });
+  });
+}
+
+// ── 圖表 + 圖例 ───────────────────────────────────────────────────────────────
+async function renderChart(city) {
+  document.getElementById('city-heading').textContent = city;
+  document.getElementById('city-total-line').textContent = '';
+  document.getElementById('city-subtitle').textContent = '載入中…';
+
+  const [chartRows, dateRes] = await Promise.all([
+    fetch(`/api/analysis/chart/${encodeURIComponent(city)}`).then(r => r.json()),
+    fetch(`/api/analysis/snapshot_date/${encodeURIComponent(city)}`).then(r => r.json()),
+  ]);
+
+  // 標題區
+  const total = chartRows.reduce((s, r) => s + r.count, 0);
+  document.getElementById('city-total-line').textContent = `共 ${total} 筆工作職缺`;
+  document.getElementById('city-subtitle').textContent =
+    dateRes.date ? `資料截至 ${formatDate(dateRes.date)}` : '尚無資料';
+
+  // 對映 job_type → label
+  const slices = chartRows.map(r => ({
+    type: r.job_type ?? 'unknown',
+    label: TYPE_LABELS[r.job_type] ?? r.job_type ?? '未分類',
+    count: r.count,
+    pct:   r.percentage,
+  }));
+
+  // 圖表
+  const ctx = document.getElementById('donut-canvas').getContext('2d');
+  if (chartInstance) chartInstance.destroy();
+
+  chartInstance = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: slices.map(s => s.label),
+      datasets: [{
+        data: slices.map(s => s.count),
+        backgroundColor: slices.map(s => TYPE_COLORS[s.type] ?? DEFAULT_COLOR),
+        borderColor: '#ffffff',
+        borderWidth: 2,
+        hoverOffset: 16,
+        hoverBorderColor: '#ffffff',
+        hoverBorderWidth: 2,
+      }],
+    },
+    options: {
+      cutout: '60%',
+      animation: { duration: 350, easing: 'easeInOutQuart' },
+      onClick(evt, elements) {
+        if (!elements.length) return;
+        const s = slices[elements[0].index];
+        window.location.href =
+          `/analysis/jobs/${encodeURIComponent(s.type)}/${encodeURIComponent(activeCity)}`;
+      },
+      onHover(evt, elements) {
+        evt.native.target.style.cursor = elements.length ? 'pointer' : 'default';
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(30,30,30,0.85)',
+          padding: 10,
+          cornerRadius: 8,
+          callbacks: {
+            title: () => '',
+            label(ctx) {
+              const s = slices[ctx.dataIndex];
+              return `  ${s.label}　${s.count} 筆　${s.pct.toFixed(1)}%`;
+            },
+          },
+        },
+      },
+    },
+    plugins: [centerTextPlugin],
+  });
+
+  // 圖例
+  document.getElementById('legend-wrap').innerHTML = slices.map(s => `
+    <div class="legend-row">
+      <span class="legend-swatch"
+            style="background:${TYPE_COLORS[s.type] ?? DEFAULT_COLOR}"></span>
+      <span class="legend-label">${escHtml(s.label)}</span>
+      <span class="legend-count">${s.count} 筆</span>
+      <span class="legend-pct">${s.pct.toFixed(1)}%</span>
+    </div>
+  `).join('');
+}
+
+// ── 初始化 ────────────────────────────────────────────────────────────────────
+async function init() {
+  cityList = await fetch('/api/analysis/cities').then(r => r.json());
+  if (!cityList.length) {
+    document.getElementById('city-heading').textContent = '尚無分析資料';
+    document.getElementById('city-subtitle').textContent = '請先執行 analyze.py';
+    return;
+  }
+  activeCity = cityList[0].city;
+  renderNav();
+  await renderChart(activeCity);
+}
+
+init();
+</script>
+
+</body>
+</html>
