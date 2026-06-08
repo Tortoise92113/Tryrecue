@@ -13,6 +13,7 @@ import argparse
 import logging as _logging
 import sys
 import threading
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytz
@@ -24,14 +25,47 @@ from config import load_config
 _log = _logging.getLogger("scheduler")
 
 
+class _WeeklyFileHandler(_logging.FileHandler):
+    """FileHandler that rotates to a new file every Monday.
+
+    Filename format: W23 2026-0601_0607 main.log
+    """
+
+    def __init__(self, log_dir: Path):
+        self._log_dir = log_dir
+        self._week = date.today().isocalendar()[1]
+        super().__init__(self._log_path(), encoding="utf-8")
+
+    def _log_path(self) -> Path:
+        today = date.today()
+        mon = today - timedelta(days=today.weekday())
+        sun = mon + timedelta(days=6)
+        wk  = today.isocalendar()[1]
+        return self._log_dir / f"W{wk:02d} {mon.year}-{mon:%m%d}_{sun:%m%d} main.log"
+
+    def emit(self, record):
+        wk = date.today().isocalendar()[1]
+        if wk != self._week:
+            self.acquire()
+            try:
+                if wk != self._week:
+                    self._week = wk
+                    self.close()
+                    self.baseFilename = str(self._log_path())
+                    self.stream = self._open()
+            finally:
+                self.release()
+        super().emit(record)
+
+
 def _setup_logging():
-    """Route all log output (scheduler + main + classifier) to logs/main_run.log and stderr."""
+    """Route all log output (scheduler + main + classifier) to a weekly log file and stderr."""
     log_dir = Path(__file__).parent / "logs"
     log_dir.mkdir(exist_ok=True)
     fmt = _logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
     root = _logging.getLogger()
     root.setLevel(_logging.INFO)
-    fh = _logging.FileHandler(log_dir / "main_run.log", encoding="utf-8")
+    fh = _WeeklyFileHandler(log_dir)
     fh.setFormatter(fmt)
     root.addHandler(fh)
     sh = _logging.StreamHandler(sys.stderr)
