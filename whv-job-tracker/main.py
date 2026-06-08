@@ -5,9 +5,8 @@ main.py — single run of the full pipeline:
   3. Send daily digest email
 """
 
+import logging
 import re
-import sys
-from pathlib import Path
 
 from config import load_config
 
@@ -16,6 +15,8 @@ from analyze import run_analysis
 from classifier import classify_batch
 from notifier import send_update_notification
 from sources import adzuna, backpacker_job_board, jora
+
+_log = logging.getLogger("main")
 
 _TITLE_BLOCK = re.compile(
     r'\bsenior\b'
@@ -37,7 +38,7 @@ def _pre_filter(jobs: list[dict]) -> list[dict]:
         else:
             kept.append(job)
     if dropped:
-        print(f"[main] pre-filter dropped {dropped} jobs (title/location filter)", file=sys.stderr)
+        _log.info("pre-filter dropped %d jobs (title/location filter)", dropped)
     return kept
 
 
@@ -51,47 +52,46 @@ def run(config: dict | None = None):
     all_jobs: list[dict] = []
     source_errors: list[str] = []
 
-    print("[main] fetching Adzuna…", file=sys.stderr)
+    _log.info("fetching Adzuna…")
     try:
         all_jobs += adzuna.fetch(config)
     except Exception as exc:
-        print(f"[main] Adzuna fetch failed: {exc}", file=sys.stderr)
+        _log.warning("Adzuna fetch failed: %s", exc)
 
     if config.get("backpacker_job_board", {}).get("enabled", True):
-        print("[main] fetching Backpacker Job Board…", file=sys.stderr)
+        _log.info("fetching Backpacker Job Board…")
         try:
             all_jobs += backpacker_job_board.fetch(config)
         except Exception as exc:
-            print(f"[main] Backpacker Job Board fetch failed: {exc}", file=sys.stderr)
+            _log.warning("Backpacker Job Board fetch failed: %s", exc)
             source_errors.append(f"⚠️ Backpacker Job Board 今日不可用（原因：{type(exc).__name__}）")
     else:
-        print("[main] Backpacker Job Board disabled in config — skipping", file=sys.stderr)
+        _log.info("Backpacker Job Board disabled in config — skipping")
 
     if config.get("jora_scraping", False):
-        print("[main] fetching Jora…", file=sys.stderr)
+        _log.info("fetching Jora…")
         try:
             all_jobs += jora.fetch(config)
         except Exception as exc:
-            print(f"[main] Jora fetch failed: {exc}", file=sys.stderr)
+            _log.warning("Jora fetch failed: %s", exc)
 
     all_jobs = _pre_filter(all_jobs)
 
     if not all_jobs:
-        print("[main] no jobs fetched from any source — exiting", file=sys.stderr)
+        _log.warning("no jobs fetched from any source — exiting")
         return
 
     # ── 2. Store & find unclassified ──────────────────────────────────────
     inserted = storage.upsert_jobs(all_jobs)
-    print(f"[main] inserted {inserted} new jobs ({len(all_jobs)} total fetched)", file=sys.stderr)
+    _log.info("inserted %d new jobs (%d total fetched)", inserted, len(all_jobs))
 
-    # Only classify jobs that don't have a result yet
     with storage.get_conn() as conn:
         rows = conn.execute(
             "SELECT id, title, company, location, city, description "
             "FROM jobs WHERE is_whv_friendly IS NULL"
         ).fetchall()
     unclassified = [dict(r) for r in rows]
-    print(f"[main] {len(unclassified)} jobs need classification", file=sys.stderr)
+    _log.info("%d jobs need classification", len(unclassified))
 
     if unclassified:
         classify_batch(
@@ -103,23 +103,23 @@ def run(config: dict | None = None):
     with storage.get_conn() as conn:
         deleted = conn.execute("DELETE FROM jobs WHERE is_whv_friendly = 0").rowcount
     if deleted:
-        print(f"[main] removed {deleted} non-WHV-friendly jobs after classification", file=sys.stderr)
+        _log.info("removed %d non-WHV-friendly jobs after classification", deleted)
 
     # ── 3. Analyse & update analytics.db ─────────────────────────────────
-    print("[main] running analysis snapshot…", file=sys.stderr)
+    _log.info("running analysis snapshot…")
     try:
         run_analysis()
     except Exception as exc:
-        print(f"[main] analysis failed: {exc}", file=sys.stderr)
+        _log.warning("analysis failed: %s", exc)
 
     # ── 4. Notify ─────────────────────────────────────────────────────────
-    print("[main] sending update notification…", file=sys.stderr)
+    _log.info("sending update notification…")
     try:
         send_update_notification(config, source_errors=source_errors or None)
     except Exception as exc:
-        print(f"[main] email failed: {exc}", file=sys.stderr)
+        _log.warning("email failed: %s", exc)
 
-    print("[main] pipeline complete", file=sys.stderr)
+    _log.info("pipeline complete")
 
 
 if __name__ == "__main__":

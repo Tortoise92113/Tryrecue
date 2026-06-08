@@ -10,6 +10,7 @@ and then daily at the time set in config.yml → schedule.run_time.
 """
 
 import argparse
+import logging as _logging
 import sys
 import threading
 from pathlib import Path
@@ -18,16 +19,34 @@ import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-import main as pipeline
 from config import load_config
+
+_log = _logging.getLogger("scheduler")
+
+
+def _setup_logging():
+    """Route all log output (scheduler + main + classifier) to logs/main_run.log and stderr."""
+    log_dir = Path(__file__).parent / "logs"
+    log_dir.mkdir(exist_ok=True)
+    fmt = _logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+    root = _logging.getLogger()
+    root.setLevel(_logging.INFO)
+    fh = _logging.FileHandler(log_dir / "main_run.log", encoding="utf-8")
+    fh.setFormatter(fmt)
+    root.addHandler(fh)
+    sh = _logging.StreamHandler(sys.stderr)
+    sh.setFormatter(fmt)
+    root.addHandler(sh)
+    _logging.getLogger("werkzeug").setLevel(_logging.WARNING)
 
 
 def _run_pipeline():
+    import main as pipeline
     try:
         config = load_config()
         pipeline.run(config)
     except Exception as exc:
-        print(f"[scheduler] pipeline error: {exc}", file=sys.stderr)
+        _log.error("pipeline error: %s", exc)
 
 
 def start_scheduler(config: dict) -> BackgroundScheduler:
@@ -43,10 +62,10 @@ def start_scheduler(config: dict) -> BackgroundScheduler:
         id="daily_pipeline",
         name=f"Daily pipeline @ {run_time} {tz_name}",
         replace_existing=True,
-        misfire_grace_time=3600,  # allow up to 1-hour late fire (e.g. after sleep/resume)
+        misfire_grace_time=3600,
     )
     scheduler.start()
-    print(f"[scheduler] scheduled daily at {run_time} {tz_name}", file=sys.stderr)
+    _log.info("scheduled daily at %s %s", run_time, tz_name)
     return scheduler
 
 
@@ -66,10 +85,12 @@ def start_web(port: int = 5000):
         name="flask",
     )
     thread.start()
-    print(f"[scheduler] Flask dashboard running at http://localhost:{port}", file=sys.stderr)
+    _log.info("Flask dashboard running at http://localhost:%d", port)
 
 
 def main():
+    _setup_logging()
+
     parser = argparse.ArgumentParser(description="WHV Job Tracker scheduler")
     parser.add_argument("--no-web",  action="store_true", help="Disable Flask dashboard")
     parser.add_argument("--port",    type=int, default=5000, help="Flask port (default 5000)")
@@ -84,19 +105,17 @@ def main():
     scheduler = start_scheduler(config)
 
     if not args.no_init:
-        print("[scheduler] running pipeline once now…", file=sys.stderr)
-        # Run in a thread so startup logs are cleaner
+        _log.info("running pipeline once now…")
         t = threading.Thread(target=_run_pipeline, daemon=True, name="init_pipeline")
         t.start()
 
-    print("[scheduler] press Ctrl+C to stop", file=sys.stderr)
+    _log.info("press Ctrl+C to stop")
     try:
-        # Keep the main thread alive
         import time
         while True:
             time.sleep(60)
     except (KeyboardInterrupt, SystemExit):
-        print("\n[scheduler] shutting down…", file=sys.stderr)
+        _log.info("shutting down…")
         scheduler.shutdown(wait=False)
 
 

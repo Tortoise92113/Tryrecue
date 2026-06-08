@@ -3,9 +3,6 @@ import json
 import logging
 import os
 import random
-import sys
-from datetime import date
-from pathlib import Path
 
 from google import genai
 
@@ -17,20 +14,8 @@ _RAMP_SECONDS = 15.0  # seconds to ramp from _RAMP_INITIAL to SEMAPHORE_LIMIT
 _DESC_TRUNCATE_LEN = 1500  # max description chars sent to Gemini
 _NOTE_MAX_LEN = 200        # max classifier_note chars stored in DB
 
-# ── Logging setup ─────────────────────────────────────────────────────────────
-_LOG_DIR = Path(__file__).parent / "logs"
-_LOG_DIR.mkdir(exist_ok=True)
-
 _logger = logging.getLogger("classifier")
-if not _logger.handlers:
-    _logger.setLevel(logging.INFO)
-    _fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
-    _fh = logging.FileHandler(_LOG_DIR / f"classifier_{date.today()}.log", encoding="utf-8")
-    _fh.setFormatter(_fmt)
-    _logger.addHandler(_fh)
-    _ch = logging.StreamHandler(sys.stderr)
-    _ch.setFormatter(_fmt)
-    _logger.addHandler(_ch)
+_logger.setLevel(logging.INFO)
 
 # Gemini 2.5 Flash (non-thinking) pricing
 _PRICE_INPUT_PER_TOKEN  = 0.15 / 1_000_000   # $0.15 per 1M input tokens
