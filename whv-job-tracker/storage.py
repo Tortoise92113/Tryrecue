@@ -2,7 +2,8 @@ import sqlite3
 import contextlib
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "jobs.db"
+DB_PATH      = Path(__file__).parent / "jobs.db"
+ANALYTICS_DB = Path(__file__).parent / "analytics.db"
 
 SCHEMA = """
 PRAGMA journal_mode=WAL;
@@ -41,14 +42,15 @@ CREATE TABLE IF NOT EXISTS job_user_states (
     updated_at  TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_jobs_source     ON jobs(source);
-CREATE INDEX IF NOT EXISTS idx_jobs_city       ON jobs(city);
-CREATE INDEX IF NOT EXISTS idx_jobs_fetched_at ON jobs(fetched_at);
-CREATE INDEX IF NOT EXISTS idx_jobs_is_whv     ON jobs(is_whv_friendly);
-CREATE INDEX IF NOT EXISTS idx_jobs_is_deleted ON jobs(is_deleted);
-CREATE INDEX IF NOT EXISTS idx_jobs_is_favorite ON jobs(is_favorite);
-CREATE INDEX IF NOT EXISTS idx_jobs_is_purged  ON jobs(is_purged);
-CREATE INDEX IF NOT EXISTS idx_states_state    ON job_user_states(state);
+CREATE INDEX IF NOT EXISTS idx_jobs_source        ON jobs(source);
+CREATE INDEX IF NOT EXISTS idx_jobs_city          ON jobs(city);
+CREATE INDEX IF NOT EXISTS idx_jobs_fetched_at    ON jobs(fetched_at);
+CREATE INDEX IF NOT EXISTS idx_jobs_is_whv        ON jobs(is_whv_friendly);
+CREATE INDEX IF NOT EXISTS idx_jobs_is_deleted    ON jobs(is_deleted);
+CREATE INDEX IF NOT EXISTS idx_jobs_is_favorite   ON jobs(is_favorite);
+CREATE INDEX IF NOT EXISTS idx_jobs_is_purged     ON jobs(is_purged);
+CREATE INDEX IF NOT EXISTS idx_states_state       ON job_user_states(state);
+CREATE INDEX IF NOT EXISTS idx_jobs_deleted_fetched ON jobs(is_deleted, fetched_at DESC);
 """
 
 
@@ -254,8 +256,8 @@ def purge_jobs(job_ids: list[str]) -> int:
     return cur.rowcount
 
 
-def permanent_delete_jobs(job_ids: list[str]) -> tuple[int, list[str]]:
-    """Scheduled cleanup: delete jobs that are purged and deleted_at > 30 days."""
+def permanent_delete_jobs() -> tuple[int, list[str]]:
+    """Scheduled cleanup: hard-delete all purged jobs older than 30 days."""
     from datetime import datetime, timezone, timedelta
     one_month_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
     with get_conn() as conn:

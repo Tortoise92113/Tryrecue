@@ -518,7 +518,6 @@
                      : j.user_state !== "new" ? `state-${j.user_state}` : "";
     const viewedClass = viewed ? "viewed" : "";
     const whvBadge   = j.is_whv_friendly ? '<span class="badge badge-whv">WHV ✓</span>' : "";
-    const viewedBadge = viewed ? '<span class="badge badge-viewed">已查看</span>' : "";
     const linkClass  = viewed ? "viewed-link" : "";
     const savedActive   = j.is_favorite ? "active" : "";
     const appliedActive = j.user_state === "applied" ? "active" : "";
@@ -535,7 +534,6 @@
           <a href="${j.url || '#'}" target="_blank" rel="noopener" class="${linkClass}" data-job-id="${j.id}">${esc(j.title)}</a>
         </div>
         <div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;align-items:center">
-          ${viewedBadge}
           ${whvBadge}
           ${urgencyBadge(j.urgency)}
           ${sourceBadge(j.source)}

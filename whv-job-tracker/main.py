@@ -19,6 +19,7 @@ from sources import adzuna, backpacker_job_board, jora
 
 _TITLE_BLOCK = re.compile(
     r'\bsenior\b'
+    r'|\bchef\b'
     r'|\bfarmer\b|\bfarming\b|\bfarm\s+manager\b|\bfarm\s+hand\b'
     r'|\bfarm\s+worker\b|\bfarm\s+assistant\b|\bagricultural\b|\bagriculture\b',
     re.IGNORECASE,

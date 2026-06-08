@@ -10,8 +10,7 @@ from flask import Flask, jsonify, render_template, request
 
 import storage
 from config import load_config
-
-ANALYTICS_DB = Path(__file__).parent.parent / "analytics.db"
+from storage import ANALYTICS_DB
 
 
 def _analytics_conn() -> sqlite3.Connection:
@@ -66,7 +65,7 @@ def api_deleted_jobs():
 
 @app.route("/api/jobs/permanent_delete", methods=["POST"])
 def api_permanent_delete():
-    deleted, skipped = storage.permanent_delete_jobs([])
+    deleted, skipped = storage.permanent_delete_jobs()
     return jsonify({"deleted": deleted, "skipped": skipped})
 
 
@@ -179,7 +178,10 @@ def api_jobs():
     city         = request.args.get("city") or None
     whv_only     = request.args.get("whv_only") == "1"
     state_filter = request.args.get("state") or None
-    limit        = min(int(request.args.get("limit", 200)), 1000)
+    try:
+        limit = min(int(request.args.get("limit", 200)), 1000)
+    except (ValueError, TypeError):
+        return jsonify({"error": "invalid limit"}), 400
     job_types_raw = request.args.get("job_types") or ""
     job_types    = [t.strip() for t in job_types_raw.split(",") if t.strip()] or None
 
@@ -245,7 +247,6 @@ def api_set_state(job_id):
 @app.route("/api/stats")
 def api_stats():
     whv_only = request.args.get("whv_only") == "1"
-    src_whv  = "AND j.is_whv_friendly = 1" if whv_only else ""
     with storage.get_conn() as conn:
         summary = conn.execute("""
             SELECT COUNT(*) AS total,
@@ -256,12 +257,14 @@ def api_stats():
             WHERE j.is_deleted = 0
               AND COALESCE(s.state, 'new') != 'hidden'
         """).fetchone()
-        by_source = conn.execute(
-            f"SELECT j.source, COUNT(*) AS cnt "
-            f"FROM jobs j LEFT JOIN job_user_states s ON j.id = s.job_id "
-            f"WHERE j.is_deleted = 0 AND COALESCE(s.state, 'new') != 'hidden' {src_whv} "
-            f"GROUP BY j.source"
-        ).fetchall()
+        by_source_sql = (
+            "SELECT j.source, COUNT(*) AS cnt "
+            "FROM jobs j LEFT JOIN job_user_states s ON j.id = s.job_id "
+            "WHERE j.is_deleted = 0 AND COALESCE(s.state, 'new') != 'hidden'"
+            + (" AND j.is_whv_friendly = 1" if whv_only else "")
+            + " GROUP BY j.source"
+        )
+        by_source = conn.execute(by_source_sql).fetchall()
         by_state = conn.execute(
             "SELECT COALESCE(s.state,'new') AS state, COUNT(*) AS cnt "
             "FROM jobs j LEFT JOIN job_user_states s ON j.id=s.job_id "

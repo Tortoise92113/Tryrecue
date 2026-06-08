@@ -9,9 +9,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-
-JOBS_DB      = Path(__file__).parent / "jobs.db"
-ANALYTICS_DB = Path(__file__).parent / "analytics.db"
+from storage import ANALYTICS_DB, DB_PATH as JOBS_DB
 
 LABEL_MAP = {
     "hospitality": "餐飲/服務",
@@ -90,15 +88,16 @@ def run_analysis() -> None:
     )
     run_id = cur.lastrowid
 
+    stat_rows = []
     for city, type_counts in data.items():
         city_total = city_totals[city]
         for jtype, count in type_counts.items():
             pct = round(count / city_total * 100, 2) if city_total else 0.0
-            cur.execute(
-                """INSERT INTO region_stats (run_id, city, job_type, count, percentage)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (run_id, city, jtype, count, pct),
-            )
+            stat_rows.append((run_id, city, jtype, count, pct))
+    cur.executemany(
+        "INSERT INTO region_stats (run_id, city, job_type, count, percentage) VALUES (?,?,?,?,?)",
+        stat_rows,
+    )
 
     analytics_conn.commit()
     analytics_conn.close()
