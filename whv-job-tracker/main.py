@@ -85,25 +85,24 @@ def run(config: dict | None = None):
     inserted = storage.upsert_jobs(all_jobs)
     _log.info("inserted %d new jobs (%d total fetched)", inserted, len(all_jobs))
 
-    with storage.get_conn() as conn:
-        rows = conn.execute(
-            "SELECT id, title, company, location, city, description "
-            "FROM jobs WHERE is_whv_friendly IS NULL"
-        ).fetchall()
-    unclassified = [dict(r) for r in rows]
-    _log.info("%d jobs need classification", len(unclassified))
+    unclassified_ids = storage.get_unclassified_job_ids()
+    jobs_to_classify = [j for j in all_jobs if j["id"] in unclassified_ids]
+    _log.info(
+        "%d to classify, %d already classified (skipped)",
+        len(jobs_to_classify),
+        len(all_jobs) - len(jobs_to_classify),
+    )
 
-    if unclassified:
+    if jobs_to_classify:
         classify_batch(
             config,
-            unclassified,
+            jobs_to_classify,
             on_result=lambda job_id, result: storage.update_classifier(job_id, result),
         )
 
-    with storage.get_conn() as conn:
-        deleted = conn.execute("DELETE FROM jobs WHERE is_whv_friendly = 0").rowcount
+    deleted = storage.soft_delete_non_whv_jobs()
     if deleted:
-        _log.info("removed %d non-WHV-friendly jobs after classification", deleted)
+        _log.info("soft-deleted %d non-WHV-friendly jobs", deleted)
 
     # ── 3. Analyse & update analytics.db ─────────────────────────────────
     _log.info("running analysis snapshot…")

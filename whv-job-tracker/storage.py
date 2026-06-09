@@ -157,7 +157,8 @@ def upsert_jobs(jobs: list[dict]) -> int:
             placeholders = ",".join("?" * len(job_ids))
             conn.execute(
                 f"UPDATE jobs SET is_deleted = 0, deleted_at = NULL "
-                f"WHERE id IN ({placeholders}) AND is_deleted = 1 AND is_purged = 0 AND deleted_at < ?",
+                f"WHERE id IN ({placeholders}) AND is_deleted = 1 AND is_purged = 0 "
+                f"AND deleted_at < ? AND (is_whv_friendly IS NULL OR is_whv_friendly != 0)",
                 (*job_ids, one_month_ago),
             )
         cur = conn.executemany(insert_sql, rows)
@@ -178,6 +179,27 @@ def update_classifier(job_id: str, result: dict):
     """
     with get_conn() as conn:
         conn.execute(sql, {**result, "job_id": job_id})
+
+
+def get_unclassified_job_ids() -> set[str]:
+    """Return IDs of jobs not yet classified or that failed classification (is_whv_friendly = -1)."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id FROM jobs WHERE is_whv_friendly IS NULL OR is_whv_friendly = -1"
+        ).fetchall()
+    return {row["id"] for row in rows}
+
+
+def soft_delete_non_whv_jobs() -> int:
+    """Soft-delete non-WHV-friendly jobs so they aren't re-classified when re-scraped."""
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        return conn.execute(
+            "UPDATE jobs SET is_deleted = 1, deleted_at = ? "
+            "WHERE is_whv_friendly = 0 AND is_deleted = 0",
+            (now,)
+        ).rowcount
 
 
 def set_user_state(job_id: str, state: str, note: str = None):
