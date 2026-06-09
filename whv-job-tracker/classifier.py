@@ -11,7 +11,7 @@ SEMAPHORE_LIMIT = int(os.getenv("GEMINI_CONCURRENCY", "8"))
 _RAMP_INITIAL = 3     # concurrent requests at cold start
 _RAMP_SECONDS = 15.0  # seconds to ramp from _RAMP_INITIAL to SEMAPHORE_LIMIT
 
-_DESC_TRUNCATE_LEN = 1500  # max description chars sent to Gemini
+_DESC_TRUNCATE_LEN = 800   # max description chars sent to Gemini
 _NOTE_MAX_LEN = 200        # max classifier_note chars stored in DB
 
 _logger = logging.getLogger("classifier")
@@ -31,33 +31,46 @@ _FAILURE_RESULT = {
     "regional_area":    None,
 }
 
-PROMPT_TEMPLATE = """You are a job classifier for Australian Working Holiday Visa (WHV/subclass 417 & 462) holders.
+PROMPT_TEMPLATE = """Classify this Australian job for WHV (subclass 417/462) holders.
+Return ONLY valid JSON with these keys:
+- is_whv_friendly: 1=suitable (short-term/casual/seasonal/backpacker), 0=not
+- visa_sponsorship: 1=mentioned, 0=not
+- accommodation: 1=provided, 0=not
+- urgency: "high"(ASAP/immediately), "normal", or "low"
+- note: ≤20 words explaining is_whv_friendly decision
+- job_type: "hospitality"|"hotel"|"retail"|"farm"|"office"|"other"
+- regional_area: true=regional AU (Cairns/Darwin/Townsville/Broome/Alice Springs/Hobart/rural), false=major city (Sydney/Melbourne/Brisbane/Perth/Adelaide/Canberra/Gold Coast), null=unknown
 
-Analyse this job listing and return ONLY a valid JSON object with these exact keys:
-- "is_whv_friendly": 1 if the job is suitable for WHV holders (short-term, casual, seasonal, backpacker-friendly), else 0
-- "visa_sponsorship": 1 if the listing mentions visa sponsorship or employer-sponsored visa, else 0
-- "accommodation": 1 if the listing mentions accommodation provided, else 0
-- "urgency": one of "high" (hiring immediately / ASAP), "normal", or "low" (no urgency signal)
-- "note": one short sentence (max 20 words) explaining your is_whv_friendly decision
-- "job_type": one of "hospitality", "hotel", "retail", "farm", "office", "other"
-- "regional_area": true if the job location is in an Australian WHV regional area (e.g. Cairns, Darwin, Townsville, Broome, Alice Springs, any rural/regional area outside major cities like Sydney/Melbourne/Brisbane/Perth/Adelaide); false if it is in a major metropolitan city; null if cannot be determined
+Rule: if URL contains "backpackerjobboard.com.au" → is_whv_friendly=1 unless title/desc says otherwise.
 
-Australian WHV regional areas include all of regional and rural Australia. Major cities that are NOT regional: Sydney, Melbourne, Brisbane, Perth, Adelaide, Canberra, Gold Coast.
-Cities that ARE regional/WHV-eligible for second/third year visa: Cairns, Darwin, Townsville, Broome, Alice Springs, Hobart, Launceston, Rockhampton, Mackay, Bundaberg, Geraldton, Port Hedland, Katherine, and all rural/outback areas.
-
-If the job URL contains "backpackerjobboard.com.au", assume is_whv_friendly = 1 unless the title or description explicitly states otherwise.
-
-Job title: {title}
+Title: {title}
 Company: {company}
 Location: {location}
 URL: {url}
-Description:
-{description}
+Description: {description}"""
 
-Respond with ONLY the JSON object, no markdown, no explanation."""
+_TEMPLATE_STATIC_CHARS = len(PROMPT_TEMPLATE) - len("{title}{company}{location}{url}{description}")
 
+_WHV_KEYWORDS = (
+    "visa", "sponsorship", "accommodation", "backpacker", "working holiday",
+    "casual", "seasonal", "immediate", "asap", "regional", "rural",
+    "harvest", "farm", "hostel", "provided", "on-site",
+)
 
 _VALID_JOB_TYPES = ("hospitality", "hotel", "retail", "farm", "office", "other")
+
+
+def _extract_relevant_excerpt(description: str, max_chars: int = _DESC_TRUNCATE_LEN) -> str:
+    """Return sentences containing WHV-relevant keywords, else first max_chars."""
+    if not description:
+        return ""
+    if len(description) <= 200:
+        return description
+    sentences = [s.strip() for s in description.replace("\n", " ").split(".") if s.strip()]
+    relevant = [s for s in sentences if any(kw in s.lower() for kw in _WHV_KEYWORDS)]
+    if relevant:
+        return ". ".join(relevant[:6])[:max_chars]
+    return description[:max_chars]
 
 
 def _validate(result: dict) -> dict:
@@ -128,7 +141,7 @@ async def _process_job(client, model_name: str, semaphore: asyncio.Semaphore,
         company=job.get("company") or "Unknown",
         location=job.get("location") or job.get("city") or "Unknown",
         url=job.get("url") or "",
-        description=(job.get("description") or "")[:_DESC_TRUNCATE_LEN],
+        description=_extract_relevant_excerpt(job.get("description") or ""),
     )
 
     had_retry = False
@@ -203,8 +216,10 @@ async def _classify_all(config: dict, jobs: list[dict], on_result) -> tuple[int,
     api_call_counter: list[int] = [0]  # single-element list so coroutines can mutate it
     err_stats = {"503_count": 0, "max_backoff": 0.0, "retried_jobs": 0, "retried_success": 0}
 
-    _logger.info("=== Classification batch start — %d jobs to process (concurrency: %d→%d over %.0fs) ===",
-                 len(jobs), _RAMP_INITIAL, semaphore_limit, _RAMP_SECONDS)
+    _logger.info(
+        "=== Classification batch start — %d jobs | template ~%d chars static | concurrency: %d→%d over %.0fs ===",
+        len(jobs), _TEMPLATE_STATIC_CHARS, _RAMP_INITIAL, semaphore_limit, _RAMP_SECONDS,
+    )
 
     results = await asyncio.gather(
         *[_process_job(client, model_name, semaphore, job, on_result,
