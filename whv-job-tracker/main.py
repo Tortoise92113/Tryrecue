@@ -121,5 +121,26 @@ def run(config: dict | None = None):
     _log.info("pipeline complete")
 
 
+def classify_only(config: dict | None = None):
+    """Classify all unclassified jobs already in DB, without fetching new ones."""
+    if config is None:
+        config = load_config()
+    storage.init_db()
+    jobs = storage.get_unclassified_jobs()
+    _log.info("%d unclassified jobs to classify", len(jobs))
+    if not jobs:
+        _log.info("nothing to classify")
+        return
+    classify_batch(
+        config,
+        jobs,
+        on_result=lambda job_id, result: storage.update_classifier(job_id, result),
+    )
+    deleted = storage.soft_delete_non_whv_jobs()
+    if deleted:
+        _log.info("soft-deleted %d non-WHV-friendly jobs", deleted)
+    _log.info("classify_only complete")
+
+
 if __name__ == "__main__":
     run()

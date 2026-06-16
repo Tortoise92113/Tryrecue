@@ -4,7 +4,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pytest
-from classifier import _is_503, _validate
+from classifier import _is_503, _is_network_error, _validate
 
 
 # ── _is_503 ───────────────────────────────────────────────────────────────────
@@ -22,6 +22,18 @@ from classifier import _is_503, _validate
 ])
 def test_is_503_detection(msg, expected):
     assert _is_503(Exception(msg)) == expected
+
+
+@pytest.mark.parametrize("msg,expected", [
+    ("Could not contact DNS servers", True),
+    ("Cannot connect to host generativelanguage.googleapis.com:443", True),
+    ("getaddrinfo failed", True),
+    ("network is unreachable", True),
+    ("Invalid API key", False),
+    ("503 Service Unavailable", False),
+])
+def test_is_network_error_detection(msg, expected):
+    assert _is_network_error(Exception(msg)) == expected
 
 
 # ── _validate ─────────────────────────────────────────────────────────────────

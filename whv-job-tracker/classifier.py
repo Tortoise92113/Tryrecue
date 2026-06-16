@@ -1,21 +1,31 @@
 import asyncio
+import concurrent.futures
 import json
 import logging
 import os
 import random
+import socket
+import sys
 
 from google import genai
 
 MAX_RETRIES = 5
 SEMAPHORE_LIMIT = int(os.getenv("GEMINI_CONCURRENCY", "8"))
-_RAMP_INITIAL = 3     # concurrent requests at cold start
-_RAMP_SECONDS = 15.0  # seconds to ramp from _RAMP_INITIAL to SEMAPHORE_LIMIT
+_RAMP_INITIAL = 1     # concurrent requests at cold start
+_RAMP_SECONDS = 30.0  # seconds to ramp from _RAMP_INITIAL to SEMAPHORE_LIMIT
+_GEMINI_API_HOST = "generativelanguage.googleapis.com"
+_DNS_CHECK_TIMEOUT_SECONDS = float(os.getenv("GEMINI_DNS_CHECK_TIMEOUT", "5"))
 
 _DESC_TRUNCATE_LEN = 800   # max description chars sent to Gemini
 _NOTE_MAX_LEN = 200        # max classifier_note chars stored in DB
 
 _logger = logging.getLogger("classifier")
 _logger.setLevel(logging.INFO)
+
+
+class GeminiNetworkError(RuntimeError):
+    """Raised when the Gemini API cannot be reached due to DNS/network failure."""
+
 
 # Gemini 2.5 Flash (non-thinking) pricing
 _PRICE_INPUT_PER_TOKEN  = 0.15 / 1_000_000   # $0.15 per 1M input tokens
@@ -107,6 +117,52 @@ def _is_503(exc: Exception) -> bool:
     )
 
 
+def _is_network_error(exc: Exception) -> bool:
+    s = str(exc).lower()
+    return any(
+        marker in s
+        for marker in (
+            "could not contact dns servers",
+            "cannot connect to host",
+            "temporary failure in name resolution",
+            "name or service not known",
+            "getaddrinfo failed",
+            "nodename nor servname provided",
+            "network is unreachable",
+            "connection refused",
+            "connection reset",
+            "timed out",
+            "timeout",
+        )
+    )
+
+
+def _format_network_error_report(reason: str, affected_jobs: int | None = None) -> str:
+    job_line = ""
+    if affected_jobs is not None:
+        job_line = f"\nAffected jobs: {affected_jobs}"
+    return (
+        "\nGemini classification stopped because the API cannot be reached.\n"
+        f"Problem: {reason}\n"
+        f"Host: {_GEMINI_API_HOST}:443"
+        f"{job_line}\n"
+        "Impact: fetched jobs were saved, but AI classification did not run.\n"
+        "Next step: check DNS/internet/VPN/firewall settings, then run getdata.bat again.\n"
+    )
+
+
+def _resolve_host_error(host: str, timeout: float = _DNS_CHECK_TIMEOUT_SECONDS) -> str | None:
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(socket.getaddrinfo, host, 443, type=socket.SOCK_STREAM)
+    try:
+        future.result(timeout=timeout)
+        return None
+    except Exception as exc:
+        return f"DNS lookup for {host} failed or timed out after {timeout:.1f}s: {exc}"
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
+
+
 def _backoff_time(attempt: int, base: float = 2.0, max_wait: float = 60.0) -> float:
     """Exponential backoff with ±30% jitter. attempt starts at 0."""
     wait = base ** attempt
@@ -183,6 +239,13 @@ async def _process_job(client, model_name: str, semaphore: asyncio.Semaphore,
                     err_stats["max_backoff"] = max(err_stats["max_backoff"], backoff)
                     _logger.warning("503 on job %r attempt %d/%d, backoff %.1fs",
                                     job.get("id"), attempt + 1, MAX_RETRIES, backoff)
+                elif _is_network_error(exc):
+                    err_stats["network_errors"] += 1
+                    raise GeminiNetworkError(
+                        _format_network_error_report(
+                            f"network/DNS error while classifying job {job.get('id')!r}: {exc}"
+                        )
+                    ) from exc
                 else:
                     _logger.warning("API error (attempt %d/%d): %s", attempt + 1, MAX_RETRIES, exc)
                     break  # non-503: don't retry
@@ -200,6 +263,12 @@ async def _process_job(client, model_name: str, semaphore: asyncio.Semaphore,
 
 
 async def _classify_all(config: dict, jobs: list[dict], on_result) -> tuple[int, int]:
+    dns_error = _resolve_host_error(_GEMINI_API_HOST)
+    if dns_error:
+        raise GeminiNetworkError(
+            _format_network_error_report(dns_error, affected_jobs=len(jobs))
+        )
+
     client = genai.Client(api_key=config["gemini"]["api_key"])
     model_name = config["gemini"]["model"]
 
@@ -214,22 +283,39 @@ async def _classify_all(config: dict, jobs: list[dict], on_result) -> tuple[int,
 
     token_counts: list = []
     api_call_counter: list[int] = [0]  # single-element list so coroutines can mutate it
-    err_stats = {"503_count": 0, "max_backoff": 0.0, "retried_jobs": 0, "retried_success": 0}
+    err_stats = {
+        "503_count": 0,
+        "network_errors": 0,
+        "max_backoff": 0.0,
+        "retried_jobs": 0,
+        "retried_success": 0,
+    }
 
     _logger.info(
         "=== Classification batch start — %d jobs | template ~%d chars static | concurrency: %d→%d over %.0fs ===",
         len(jobs), _TEMPLATE_STATIC_CHARS, _RAMP_INITIAL, semaphore_limit, _RAMP_SECONDS,
     )
 
-    results = await asyncio.gather(
-        *[_process_job(client, model_name, semaphore, job, on_result,
-                       token_counts, api_call_counter, err_stats) for job in jobs]
-    )
-    ramp_task.cancel()
+    tasks = [
+        asyncio.create_task(
+            _process_job(client, model_name, semaphore, job, on_result,
+                         token_counts, api_call_counter, err_stats)
+        )
+        for job in jobs
+    ]
     try:
-        await ramp_task
-    except asyncio.CancelledError:
-        pass
+        results = await asyncio.gather(*tasks)
+    except GeminiNetworkError:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        raise
+    finally:
+        ramp_task.cancel()
+        try:
+            await ramp_task
+        except asyncio.CancelledError:
+            pass
 
     classified = sum(results)
     skipped = len(results) - classified
@@ -251,10 +337,11 @@ async def _classify_all(config: dict, jobs: list[dict], on_result) -> tuple[int,
 
     _logger.info(
         "=== Batch complete — jobs: %d | API calls: %d | retries: %d | "
-        "503_errors: %d | max_backoff: %.1fs | retry_success_rate: %s | "
+        "503_errors: %d | network_errors: %d | max_backoff: %.1fs | retry_success_rate: %s | "
         "classified: %d | failed: %d%s ===",
         len(jobs), total_calls, retries,
-        err_stats["503_count"], err_stats["max_backoff"], retry_success_rate,
+        err_stats["503_count"], err_stats["network_errors"],
+        err_stats["max_backoff"], retry_success_rate,
         classified, skipped, token_suffix,
     )
 
@@ -263,4 +350,11 @@ async def _classify_all(config: dict, jobs: list[dict], on_result) -> tuple[int,
 
 def classify_batch(config: dict, jobs: list[dict],
                    on_result=None) -> tuple[int, int]:
+    # aiodns/c-ares fails on some Windows DNS configs; force ThreadedResolver
+    # (socket.getaddrinfo) by patching the name TCPConnector.__init__ reads.
+    import aiohttp.connector
+    import aiohttp.resolver
+    aiohttp.connector.DefaultResolver = aiohttp.resolver.ThreadedResolver
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     return asyncio.run(_classify_all(config, jobs, on_result))

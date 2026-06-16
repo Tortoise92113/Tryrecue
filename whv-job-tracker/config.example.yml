@@ -43,3 +43,6 @@ schedule:
   timezone: "Australia/Darwin"
 
 jora_scraping: true
+
+filters:
+  exclude_urgent: false  # 設 true 可過濾 urgency=high 的職缺

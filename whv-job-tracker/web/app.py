@@ -185,9 +185,12 @@ def api_jobs():
     job_types_raw = request.args.get("job_types") or ""
     job_types    = [t.strip() for t in job_types_raw.split(",") if t.strip()] or None
 
+    exclude_urgent = load_config().get("filters", {}).get("exclude_urgent", False)
     rows = storage.get_jobs(city=city, whv_only=whv_only,
                             state_filter=state_filter,
-                            job_types=job_types, limit=limit)
+                            job_types=job_types,
+                            exclude_urgent=exclude_urgent,
+                            limit=limit)
     return jsonify([dict(r) for r in rows])
 
 

@@ -76,9 +76,12 @@ def _setup_logging():
 
 def _run_pipeline():
     import main as pipeline
+    from classifier import GeminiNetworkError
     try:
         config = load_config()
         pipeline.run(config)
+    except GeminiNetworkError as exc:
+        _log.error("%s", exc)
     except Exception as exc:
         _log.error("pipeline error: %s", exc)
 
@@ -126,10 +129,23 @@ def main():
     _setup_logging()
 
     parser = argparse.ArgumentParser(description="WHV Job Tracker scheduler")
-    parser.add_argument("--no-web",  action="store_true", help="Disable Flask dashboard")
-    parser.add_argument("--port",    type=int, default=5000, help="Flask port (default 5000)")
-    parser.add_argument("--no-init", action="store_true", help="Skip immediate pipeline run on startup")
+    parser.add_argument("--no-web",   action="store_true", help="Disable Flask dashboard")
+    parser.add_argument("--port",     type=int, default=5000, help="Flask port (default 5000)")
+    parser.add_argument("--no-init",  action="store_true", help="Skip immediate pipeline run on startup")
+    parser.add_argument("--run-once",      action="store_true", help="Run pipeline once with logging, then exit")
+    parser.add_argument("--classify-only", action="store_true", help="Classify unclassified DB jobs without fetching")
     args = parser.parse_args()
+
+    if args.run_once or args.classify_only:
+        if args.classify_only:
+            _log.info("=== classify-only run ===")
+            import main as pipeline
+            pipeline.classify_only()
+        else:
+            _log.info("=== manual run ===")
+            _run_pipeline()
+        _log.info("=== done ===")
+        return
 
     config = load_config()
 

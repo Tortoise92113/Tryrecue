@@ -190,6 +190,15 @@ def get_unclassified_job_ids() -> set[str]:
     return {row["id"] for row in rows}
 
 
+def get_unclassified_jobs() -> list[dict]:
+    """Return full records for jobs not yet classified or that failed classification."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM jobs WHERE is_whv_friendly IS NULL OR is_whv_friendly = -1"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def soft_delete_non_whv_jobs() -> int:
     """Soft-delete non-WHV-friendly jobs so they aren't re-classified when re-scraped."""
     from datetime import datetime, timezone
@@ -219,6 +228,7 @@ def set_user_state(job_id: str, state: str, note: str = None):
 
 def get_jobs(city: str = None, whv_only: bool = False,
              state_filter: str = None, job_types: list[str] = None,
+             exclude_urgent: bool = False,
              limit: int = 200) -> list[sqlite3.Row]:
     clauses, params = ["j.is_deleted = 0"], {}
     if city:
@@ -229,6 +239,8 @@ def get_jobs(city: str = None, whv_only: bool = False,
     if state_filter:
         clauses.append("COALESCE(s.state, 'new') = :state")
         params["state"] = state_filter
+    if exclude_urgent:
+        clauses.append("(j.urgency IS NULL OR j.urgency != 'high')")
     if job_types:
         placeholders = ",".join(f":jt{i}" for i in range(len(job_types)))
         clauses.append(f"j.job_type IN ({placeholders})")
