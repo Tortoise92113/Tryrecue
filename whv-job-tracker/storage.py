@@ -320,6 +320,36 @@ def get_new_jobs_since(since_iso: str) -> list[sqlite3.Row]:
         return conn.execute(sql, {"since": since_iso}).fetchall()
 
 
+def fetched_today() -> bool:
+    """Return True if any job was fetched today (compared in local time)."""
+    from datetime import date
+    today = date.today().isoformat()
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM jobs WHERE date(fetched_at, 'localtime') = ? LIMIT 1",
+            (today,)
+        ).fetchone()
+    return row is not None
+
+
+def get_todays_whv_jobs() -> list[dict]:
+    """Return all WHV-friendly, non-deleted jobs fetched today (local time)."""
+    from datetime import date
+    today = date.today().isoformat()
+    with get_conn() as conn:
+        rows = conn.execute("""
+            SELECT id, title, company, location, city, job_type,
+                   salary_min, salary_max, url, is_whv_friendly,
+                   regional_area, source, urgency, classifier_note
+            FROM jobs
+            WHERE date(fetched_at, 'localtime') = ?
+              AND is_whv_friendly = 1
+              AND is_deleted = 0
+            ORDER BY city, job_type, title
+        """, (today,)).fetchall()
+    return [dict(r) for r in rows]
+
+
 if __name__ == "__main__":
     init_db()
     print(f"Database initialised at {DB_PATH}")

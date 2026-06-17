@@ -121,6 +121,41 @@ def _build_text(user_name: str, summary: dict) -> str:
     return "\n".join(lines)
 
 
+def send_report_email(config: dict, recipient_email: str, html_content: str) -> None:
+    """Send the static HTML report as an email attachment."""
+    from email.mime.application import MIMEApplication
+
+    today   = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    fname   = f"whv-report-{today}.html"
+    subject = f"[WHV Tracker] 今日職缺報告 — {today}"
+    body    = (
+        f"今日 WHV 職缺報告已產生。\n"
+        f"請開啟附件 {fname} 查看互動式職缺清單（支援城市、類型篩選）。"
+    )
+
+    msg = MIMEMultipart("mixed")
+    msg["Subject"] = subject
+    msg["From"]    = config["email"]["sender"]
+    msg["To"]      = recipient_email
+    msg.attach(MIMEText(body, "plain", "utf-8"))
+
+    att = MIMEApplication(html_content.encode("utf-8"), Name=fname)
+    att["Content-Disposition"] = f'attachment; filename="{fname}"'
+    msg.attach(att)
+
+    smtp_server  = config["email"]["smtp_server"]
+    smtp_port    = int(config["email"]["smtp_port"])
+    sender       = config["email"]["sender"]
+    app_password = config["email"]["app_password"]
+
+    with smtplib.SMTP(smtp_server, smtp_port, timeout=30) as server:
+        server.ehlo()
+        server.starttls()
+        server.login(sender, app_password)
+        server.sendmail(sender, [recipient_email], msg.as_string())
+    print(f"[notifier] report sent to {recipient_email}", file=sys.stderr)
+
+
 def send_failure_alert(config: dict, error_summary: str) -> None:
     """寄出排程失敗通知給 admin_email（或 email.recipients）。"""
     now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
