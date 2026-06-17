@@ -4,6 +4,7 @@ from pathlib import Path
 
 DB_PATH      = Path(__file__).parent / "jobs.db"
 ANALYTICS_DB = Path(__file__).parent / "analytics.db"
+UNCLASSIFIED_JOB_TYPE = "unknown"
 
 SCHEMA = """
 PRAGMA journal_mode=WAL;

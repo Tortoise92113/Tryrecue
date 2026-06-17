@@ -9,7 +9,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-from storage import ANALYTICS_DB, DB_PATH as JOBS_DB
+from storage import ANALYTICS_DB, DB_PATH as JOBS_DB, UNCLASSIFIED_JOB_TYPE
 
 LABEL_MAP = {
     "hospitality": "餐飲/服務",
@@ -63,7 +63,7 @@ def compute_stats(rows: list[tuple]) -> tuple[dict, dict]:
     city_totals: dict[str, int] = defaultdict(int)
 
     for city, job_type, count in rows:
-        jtype = job_type if job_type else "unknown"
+        jtype = job_type if job_type else UNCLASSIFIED_JOB_TYPE
         data[city][jtype] += count
         city_totals[city] += count
 

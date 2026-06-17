@@ -1,12 +1,14 @@
 import hashlib
+import logging
 import re
-import sys
 import time
 from datetime import datetime, timezone
 
 import requests
 
 BASE_URL = "https://api.adzuna.com/v1/api/jobs/au/search/{page}"
+
+_logger = logging.getLogger("adzuna")
 
 
 def _job_id(raw: dict) -> str:
@@ -31,6 +33,23 @@ def _parse(raw: dict, city: str) -> dict:
     }
 
 
+def _fetch_with_retry(url: str, params: dict, max_retries: int = 3, base_delay: float = 2.0):
+    last_exc = None
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(url, params=params, timeout=15)
+            response.raise_for_status()
+            return response
+        except requests.exceptions.HTTPError as exc:
+            if exc.response is not None and exc.response.status_code == 503:
+                last_exc = exc
+                if attempt < max_retries - 1:
+                    time.sleep(base_delay * (attempt + 1))
+                    continue
+            raise
+    raise last_exc
+
+
 def fetch(config: dict) -> list[dict]:
     app_id  = config["adzuna"]["app_id"]
     app_key = config["adzuna"]["app_key"]
@@ -40,12 +59,16 @@ def fetch(config: dict) -> list[dict]:
     page_size = min(50, max_per_query)
 
     results: dict[str, dict] = {}
+    total_queries = 0
+    failed_queries: list[tuple] = []
 
     for city in cities:
         for keyword in keywords:
             # Adzuna searches job titles — strip meta-phrases that appear in config keywords
             keyword = re.sub(r'\s+working\s+holiday', '', keyword, flags=re.IGNORECASE).strip()
+            total_queries += 1
             pages_needed = -(-max_per_query // page_size)  # ceiling division
+            query_failed = False
             for page in range(1, pages_needed + 1):
                 params = {
                     "app_id":           app_id,
@@ -55,15 +78,11 @@ def fetch(config: dict) -> list[dict]:
                     "where":            city,
                 }
                 try:
-                    resp = requests.get(
-                        BASE_URL.format(page=page),
-                        params=params,
-                        timeout=15,
-                    )
-                    resp.raise_for_status()
+                    resp = _fetch_with_retry(BASE_URL.format(page=page), params)
                     data = resp.json()
                 except requests.RequestException as exc:
-                    print(f"[adzuna] request error ({city!r}, {keyword!r}, p{page}): {exc}", file=sys.stderr)
+                    _logger.warning("[adzuna] request error (%r, %r, p%d): %s", city, keyword, page, exc)
+                    query_failed = True
                     break
 
                 jobs = data.get("results", [])
@@ -79,5 +98,19 @@ def fetch(config: dict) -> list[dict]:
 
                 time.sleep(0.3)  # be polite to the API
 
-    print(f"[adzuna] fetched {len(results)} unique jobs", file=sys.stderr)
+            if query_failed:
+                failed_queries.append((city, keyword))
+
+    if failed_queries:
+        _logger.warning(
+            "=== Adzuna fetch complete — %d queries attempted | %d failed (after retry): %s ===",
+            total_queries, len(failed_queries), failed_queries,
+        )
+    else:
+        _logger.info(
+            "=== Adzuna fetch complete — %d queries attempted | 0 failed ===",
+            total_queries,
+        )
+
+    _logger.info("[adzuna] fetched %d unique jobs", len(results))
     return list(results.values())

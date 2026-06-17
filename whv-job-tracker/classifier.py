@@ -1,11 +1,11 @@
 import asyncio
-import concurrent.futures
 import json
 import logging
 import os
 import random
 import socket
 import sys
+import threading
 
 from google import genai
 
@@ -40,9 +40,10 @@ _MODEL_PRICING = {
 
 
 def _get_pricing(model_name: str) -> dict:
-    for key, price in _MODEL_PRICING.items():
+    # Sort longest key first so "gemini-2.5-flash-lite" matches before "gemini-2.5-flash".
+    for key in sorted(_MODEL_PRICING, key=len, reverse=True):
         if key in model_name:
-            return price
+            return _MODEL_PRICING[key]
     _logger.warning("Unknown model %r for pricing, defaulting to flash rates", model_name)
     return _MODEL_PRICING["gemini-2.5-flash"]
 
@@ -167,15 +168,23 @@ def _format_network_error_report(reason: str, affected_jobs: int | None = None) 
 
 
 def _resolve_host_error(host: str, timeout: float = _DNS_CHECK_TIMEOUT_SECONDS) -> str | None:
-    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-    future = executor.submit(socket.getaddrinfo, host, 443, type=socket.SOCK_STREAM)
-    try:
-        future.result(timeout=timeout)
-        return None
-    except Exception as exc:
-        return f"DNS lookup for {host} failed or timed out after {timeout:.1f}s: {exc}"
-    finally:
-        executor.shutdown(wait=False, cancel_futures=True)
+    _result: list = [None]
+    _done = threading.Event()
+
+    def _lookup():
+        try:
+            socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
+        except Exception as exc:
+            _result[0] = exc
+        finally:
+            _done.set()
+
+    t = threading.Thread(target=_lookup, daemon=True)
+    t.start()
+    if _done.wait(timeout=timeout):
+        exc = _result[0]
+        return None if exc is None else f"DNS lookup for {host} failed: {exc}"
+    return f"DNS lookup for {host} timed out after {timeout:.1f}s"
 
 
 def _backoff_time(attempt: int, base: float = 2.0, max_wait: float = 60.0) -> float:
@@ -320,7 +329,7 @@ async def _classify_all(config: dict, jobs: list[dict], on_result) -> tuple[int,
     ]
     try:
         results = await asyncio.gather(*tasks)
-    except GeminiNetworkError:
+    except Exception:
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
@@ -368,9 +377,19 @@ def classify_batch(config: dict, jobs: list[dict],
                    on_result=None) -> tuple[int, int]:
     # aiodns/c-ares fails on some Windows DNS configs; force ThreadedResolver
     # (socket.getaddrinfo) by patching the name TCPConnector.__init__ reads.
+    import aiohttp
     import aiohttp.connector
     import aiohttp.resolver
-    aiohttp.connector.DefaultResolver = aiohttp.resolver.ThreadedResolver
+    # Patch aiodns/c-ares which fails on some Windows DNS configs.
+    # Tested with aiohttp 3.9.x — re-verify after aiohttp upgrades.
+    if hasattr(aiohttp.connector, "DefaultResolver"):
+        aiohttp.connector.DefaultResolver = aiohttp.resolver.ThreadedResolver
+    else:
+        _logger.warning(
+            "aiohttp.connector.DefaultResolver not found — DNS patch skipped "
+            "(aiohttp internals may have changed; version: %s)",
+            getattr(aiohttp, "__version__", "unknown"),
+        )
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     return asyncio.run(_classify_all(config, jobs, on_result))

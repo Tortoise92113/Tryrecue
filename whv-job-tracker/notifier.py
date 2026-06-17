@@ -121,6 +121,44 @@ def _build_text(user_name: str, summary: dict) -> str:
     return "\n".join(lines)
 
 
+def send_failure_alert(config: dict, error_summary: str) -> None:
+    """寄出排程失敗通知給 admin_email（或 email.recipients）。"""
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    subject = f"[WHV Tracker] 排程失敗 — {now_str}"
+    body = (
+        f"WHV Job Tracker 排程執行失敗。\n\n"
+        f"時間：{now_str}\n"
+        f"錯誤摘要：{error_summary}\n\n"
+        "請檢查 DNS／網路／API 設定，並手動執行 getdata.bat 重試。"
+    )
+
+    recipients = config.get("admin_email") or config["email"]["recipients"]
+    if isinstance(recipients, str):
+        recipients = [recipients]
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"]    = config["email"]["sender"]
+    msg["To"]      = ", ".join(recipients)
+    msg.attach(MIMEText(body, "plain", "utf-8"))
+
+    smtp_server  = config["email"]["smtp_server"]
+    smtp_port    = int(config["email"]["smtp_port"])
+    sender       = config["email"]["sender"]
+    app_password = config["email"]["app_password"]
+
+    try:
+        with smtplib.SMTP(smtp_server, smtp_port, timeout=30) as server:
+            server.ehlo()
+            server.starttls()
+            server.login(sender, app_password)
+            server.sendmail(sender, recipients, msg.as_string())
+        print(f"[notifier] failure alert sent to {recipients}", file=sys.stderr)
+    except Exception as exc:
+        print(f"[notifier] failed to send failure alert: {exc}", file=sys.stderr)
+        raise
+
+
 def send_update_notification(config: dict, analysis_url: str = "http://localhost:5000/analysis",
                              source_errors: list[str] | None = None):
     """分析快照完成後，寄出簡潔的『已更新』通知信。"""

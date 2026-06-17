@@ -10,7 +10,21 @@ from flask import Flask, jsonify, render_template, request
 
 import storage
 from config import load_config
-from storage import ANALYTICS_DB
+from storage import ANALYTICS_DB, UNCLASSIFIED_JOB_TYPE
+
+_config_cache: dict | None = None
+
+
+def _get_config() -> dict:
+    global _config_cache
+    if _config_cache is None:
+        try:
+            _config_cache = load_config()
+        except Exception as exc:
+            from flask import abort
+            app.logger.error("Config load failed: %s", exc)
+            abort(500, description=f"Configuration error: {exc}")
+    return _config_cache
 
 
 def _analytics_conn() -> sqlite3.Connection:
@@ -90,7 +104,7 @@ def analysis_jobs_page(job_type: str, city: str):
 @app.route("/api/analysis/jobs/<job_type>/<path:city>")
 def api_analysis_jobs(job_type: str, city: str):
     with storage.get_conn() as conn:
-        if job_type == "unknown":
+        if job_type == UNCLASSIFIED_JOB_TYPE:
             rows = conn.execute("""
                 SELECT id, title, company, location, salary_min, salary_max,
                        url, is_whv_friendly, regional_area, source, posted_at,
@@ -113,7 +127,7 @@ def api_analysis_jobs(job_type: str, city: str):
 
 @app.route("/")
 def index():
-    config = load_config()
+    config = _get_config()
     cities = config["search"]["cities"]
     return render_template("index.html", cities=cities, user_name=config.get("user_name", ""))
 
@@ -195,7 +209,7 @@ def api_jobs():
     job_types_raw = request.args.get("job_types") or ""
     job_types    = [t.strip() for t in job_types_raw.split(",") if t.strip()] or None
 
-    exclude_urgent = load_config().get("filters", {}).get("exclude_urgent", False)
+    exclude_urgent = _get_config().get("filters", {}).get("exclude_urgent", False)
     rows = storage.get_jobs(city=city, whv_only=whv_only,
                             state_filter=state_filter,
                             job_types=job_types,
@@ -260,10 +274,13 @@ def api_set_state(job_id):
 @app.route("/api/stats")
 def api_stats():
     whv_only = request.args.get("whv_only") == "1"
-    exclude_urgent = load_config().get("filters", {}).get("exclude_urgent", False)
-    urgent_clause = " AND (j.urgency IS NULL OR j.urgency != 'high')" if exclude_urgent else ""
+    exclude_urgent = _get_config().get("filters", {}).get("exclude_urgent", False)
+    # Use (? = 0 OR <condition>) so urgency/whv filters can be toggled without
+    # building different SQL strings — avoids f-string interpolation entirely.
+    urgent_p = 1 if exclude_urgent else 0
+    whv_p    = 1 if whv_only else 0
     with storage.get_conn() as conn:
-        summary = conn.execute(f"""
+        summary = conn.execute("""
             SELECT COUNT(*) AS total,
                    SUM(CASE WHEN j.is_whv_friendly = 1 THEN 1 ELSE 0 END) AS whv,
                    SUM(CASE WHEN j.regional_area = 1 THEN 1 ELSE 0 END) AS regional
@@ -271,23 +288,24 @@ def api_stats():
             LEFT JOIN job_user_states s ON j.id = s.job_id
             WHERE j.is_deleted = 0
               AND COALESCE(s.state, 'new') != 'hidden'
-              {urgent_clause}
-        """).fetchone()
-        by_source_sql = (
-            "SELECT j.source, COUNT(*) AS cnt "
-            "FROM jobs j LEFT JOIN job_user_states s ON j.id = s.job_id "
-            "WHERE j.is_deleted = 0 AND COALESCE(s.state, 'new') != 'hidden'"
-            + urgent_clause
-            + (" AND j.is_whv_friendly = 1" if whv_only else "")
-            + " GROUP BY j.source"
-        )
-        by_source = conn.execute(by_source_sql).fetchall()
-        by_state = conn.execute(
-            "SELECT COALESCE(s.state,'new') AS state, COUNT(*) AS cnt "
-            "FROM jobs j LEFT JOIN job_user_states s ON j.id=s.job_id "
-            f"WHERE j.is_deleted = 0{urgent_clause} "
-            "GROUP BY state"
-        ).fetchall()
+              AND (? = 0 OR (j.urgency IS NULL OR j.urgency != 'high'))
+        """, (urgent_p,)).fetchone()
+        by_source = conn.execute("""
+            SELECT j.source, COUNT(*) AS cnt
+            FROM jobs j LEFT JOIN job_user_states s ON j.id = s.job_id
+            WHERE j.is_deleted = 0
+              AND COALESCE(s.state, 'new') != 'hidden'
+              AND (? = 0 OR (j.urgency IS NULL OR j.urgency != 'high'))
+              AND (? = 0 OR j.is_whv_friendly = 1)
+            GROUP BY j.source
+        """, (urgent_p, whv_p)).fetchall()
+        by_state = conn.execute("""
+            SELECT COALESCE(s.state,'new') AS state, COUNT(*) AS cnt
+            FROM jobs j LEFT JOIN job_user_states s ON j.id = s.job_id
+            WHERE j.is_deleted = 0
+              AND (? = 0 OR (j.urgency IS NULL OR j.urgency != 'high'))
+            GROUP BY state
+        """, (urgent_p,)).fetchall()
     return jsonify({
         "total":        summary["total"],
         "whv_friendly": summary["whv"],

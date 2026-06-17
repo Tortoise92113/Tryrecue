@@ -81,7 +81,7 @@ def _run_pipeline():
         config = load_config()
         pipeline.run(config)
     except GeminiNetworkError as exc:
-        _log.error("%s", exc)
+        _log.error("pipeline error: %s", exc)
     except Exception as exc:
         _log.error("pipeline error: %s", exc)
 

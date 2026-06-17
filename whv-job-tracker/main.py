@@ -7,13 +7,14 @@ main.py — single run of the full pipeline:
 
 import logging
 import re
+import sys
 
 from config import load_config
 
 import storage
 from analyze import run_analysis
 from classifier import GeminiNetworkError, classify_batch
-from notifier import send_update_notification
+from notifier import send_failure_alert, send_update_notification
 from sources import adzuna, backpacker_job_board, jora
 
 _log = logging.getLogger("main")
@@ -135,11 +136,26 @@ def classify_only(config: dict | None = None):
     if not jobs:
         _log.info("nothing to classify")
         return
-    classify_batch(
-        config,
-        jobs,
-        on_result=lambda job_id, result: storage.update_classifier(job_id, result),
-    )
+    try:
+        classify_batch(
+            config,
+            jobs,
+            on_result=lambda job_id, result: storage.update_classifier(job_id, result),
+        )
+    except GeminiNetworkError as exc:
+        _log.error("classification skipped — network unreachable: %s", exc)
+        try:
+            send_failure_alert(config, f"Gemini DNS/network failure:\n{exc}")
+        except Exception as mail_exc:
+            _log.warning("failed to send failure alert: %s", mail_exc)
+        sys.exit(1)
+    except Exception as exc:
+        _log.error("unexpected classification error: %s", exc, exc_info=True)
+        try:
+            send_failure_alert(config, f"{type(exc).__name__}: {exc}")
+        except Exception as mail_exc:
+            _log.warning("failed to send failure alert: %s", mail_exc)
+        sys.exit(1)
     deleted = storage.soft_delete_non_whv_jobs()
     if deleted:
         _log.info("soft-deleted %d non-WHV-friendly jobs", deleted)
