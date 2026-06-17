@@ -1,6 +1,9 @@
+import logging
 import os
 import sqlite3
 import sys
+import threading
+from datetime import datetime
 from pathlib import Path
 
 # Allow imports from project root
@@ -10,9 +13,182 @@ from flask import Flask, jsonify, render_template, request
 
 import storage
 from config import load_config
+from filters import pre_filter
 from storage import ANALYTICS_DB, UNCLASSIFIED_JOB_TYPE
 
 _config_cache: dict | None = None
+
+# ── Dashboard shared state ────────────────────────────────────────────────────
+_dash_lock    = threading.Lock()
+_dash_logs: list[str] = []
+_dash_running = False
+_dash_done    = False
+_dash_error   = False
+
+
+def _dlog(msg: str) -> None:
+    ts = datetime.now().strftime("%H:%M:%S")
+    line = f"[{ts}] {msg}"
+    with _dash_lock:
+        if len(_dash_logs) >= 2000:
+            _dash_logs.pop(0)
+        _dash_logs.append(line)
+    print(line, file=sys.stderr)
+
+
+class _DashBufHandler(logging.Handler):
+    _SKIP = {"werkzeug", "apscheduler"}
+
+    def emit(self, record: logging.LogRecord) -> None:
+        root = record.name.split(".")[0]
+        if root in self._SKIP or record.levelno < logging.INFO:
+            return
+        ts = datetime.now().strftime("%H:%M:%S")
+        with _dash_lock:
+            _dash_logs.append(f"[{ts}] [{record.name}] {record.getMessage()}")
+
+
+_dash_buf_handler = _DashBufHandler()
+
+
+def _dash_fetch_and_classify(config: dict) -> None:
+    from sources import adzuna, backpacker_job_board, jora
+    from classifier import GeminiNetworkError, classify_batch
+
+    all_jobs: list[dict] = []
+
+    _dlog("  → 抓取 Adzuna...")
+    try:
+        jobs_a = adzuna.fetch(config)
+        _dlog(f"  ✅ Adzuna: {len(jobs_a)} 筆")
+        all_jobs += jobs_a
+    except Exception as exc:
+        _dlog(f"  ⚠  Adzuna 失敗: {exc}")
+
+    if config.get("backpacker_job_board", {}).get("enabled", True):
+        _dlog("  → 抓取 Backpacker Job Board...")
+        try:
+            jobs_b = backpacker_job_board.fetch(config)
+            _dlog(f"  ✅ Backpacker Job Board: {len(jobs_b)} 筆")
+            all_jobs += jobs_b
+        except Exception as exc:
+            _dlog(f"  ⚠  Backpacker Job Board 失敗: {exc}")
+
+    if config.get("jora_scraping", False):
+        _dlog("  → 抓取 Jora...")
+        try:
+            jobs_j = jora.fetch(config)
+            _dlog(f"  ✅ Jora: {len(jobs_j)} 筆")
+            all_jobs += jobs_j
+        except Exception as exc:
+            _dlog(f"  ⚠  Jora 失敗: {exc}")
+
+    all_jobs, dropped = pre_filter(all_jobs)
+    if dropped:
+        _dlog(f"  前置過濾排除 {dropped} 筆（職稱/地點）")
+
+    if not all_jobs:
+        _dlog("  ⚠  沒有抓到任何職缺，中止抓取流程")
+        return
+
+    inserted = storage.upsert_jobs(all_jobs)
+    _dlog(f"  ✅ 儲存完成：{inserted} 筆新增，共 {len(all_jobs)} 筆")
+
+    presence = storage.update_job_presence({j["id"] for j in all_jobs})
+    if presence["revived"] or presence["newly_delisted"]:
+        _dlog(f"  📊 自動下架：{presence['newly_delisted']} 筆 | 重新上架：{presence['revived']} 筆")
+
+    unclassified_ids = storage.get_unclassified_job_ids()
+    to_classify = [j for j in all_jobs if j["id"] in unclassified_ids]
+
+    if to_classify:
+        _dlog(f"  → AI 分類 {len(to_classify)} 筆（可能需要幾分鐘）...")
+        try:
+            classified, failed = classify_batch(
+                config,
+                to_classify,
+                on_result=lambda jid, r: storage.update_classifier(jid, r),
+            )
+            _dlog(f"  ✅ 分類完成：{classified} 成功，{failed} 失敗")
+        except GeminiNetworkError as exc:
+            _dlog(f"  ⚠  Gemini 網路錯誤，分類跳過: {exc}")
+        except Exception as exc:
+            _dlog(f"  ⚠  分類失敗: {exc}")
+    else:
+        _dlog("  所有職缺已分類，跳過分類步驟")
+
+    deleted = storage.soft_delete_non_whv_jobs()
+    if deleted:
+        _dlog(f"  軟刪除 {deleted} 筆非 WHV 職缺")
+
+
+def _dash_pipeline(recipient_email: str, scope: str = "today") -> None:
+    global _dash_running, _dash_done, _dash_error
+
+    root_logger = logging.getLogger()
+    root_logger.addHandler(_dash_buf_handler)
+    if root_logger.level == logging.NOTSET or root_logger.level > logging.INFO:
+        root_logger.setLevel(logging.INFO)
+
+    try:
+        from analyze import run_analysis
+        from report import generate_static_report
+        from notifier import send_report_email
+
+        config = _get_config()
+        storage.init_db()
+
+        _dlog("📋 檢查今天是否已有抓取記錄...")
+        if storage.fetched_today():
+            _dlog("✅ 今天已有資料，跳過抓取")
+        else:
+            _dlog("⏳ 今天尚未抓取，開始完整流程...")
+            _dash_fetch_and_classify(config)
+
+        _dlog("📊 產生分析快照...")
+        try:
+            run_analysis()
+            _dlog("✅ 分析快照完成")
+        except Exception as exc:
+            _dlog(f"⚠  分析失敗（不影響報告）: {exc}")
+
+        if scope == "all":
+            _dlog("🗄 讀取整個資料庫的 WHV 職缺...")
+            rows = storage.get_jobs(whv_only=True, limit=10000)
+            jobs = [dict(r) for r in rows]
+        else:
+            _dlog("🔍 讀取今天的 WHV 職缺清單...")
+            jobs = storage.get_todays_whv_jobs()
+        _dlog(f"✅ 共 {len(jobs)} 筆 WHV 友善職缺")
+
+        if not jobs:
+            _dlog("⚠  沒有 WHV 職缺資料（可能抓取失敗或全部被過濾）")
+
+        _dlog("📄 產生靜態 HTML 報告...")
+        html = generate_static_report(jobs)
+        _dlog(f"✅ 報告產生完成（{len(html):,} bytes）")
+
+        _dlog(f"📧 寄送報告至 {recipient_email}...")
+        send_report_email(config, recipient_email, html)
+        _dlog("✅ 寄信成功！")
+        _dlog("════════ 全部完成 ════════")
+
+        with _dash_lock:
+            _dash_done = True
+
+    except Exception as exc:
+        import traceback
+        _dlog(f"❌ 流程失敗：{exc}")
+        _dlog(traceback.format_exc())
+        with _dash_lock:
+            _dash_done  = True
+            _dash_error = True
+
+    finally:
+        root_logger.removeHandler(_dash_buf_handler)
+        with _dash_lock:
+            _dash_running = False
+            _dash_done = True
 
 
 def _get_config() -> dict:
@@ -111,6 +287,7 @@ def api_analysis_jobs(job_type: str, city: str):
                        is_favorite
                 FROM jobs
                 WHERE city = ? AND job_type IS NULL
+                  AND is_deleted = 0 AND delisted_at IS NULL
                 ORDER BY posted_at DESC
             """, (city,)).fetchall()
         else:
@@ -120,6 +297,7 @@ def api_analysis_jobs(job_type: str, city: str):
                        is_favorite
                 FROM jobs
                 WHERE city = ? AND job_type = ?
+                  AND is_deleted = 0 AND delisted_at IS NULL
                 ORDER BY posted_at DESC
             """, (city, job_type)).fetchall()
     return jsonify([dict(r) for r in rows])
@@ -238,7 +416,7 @@ def api_favorites():
                    salary_min, salary_max, url, is_whv_friendly,
                    regional_area, source, favorited_at
             FROM jobs
-            WHERE is_favorite = 1 AND is_deleted = 0
+            WHERE is_favorite = 1 AND is_deleted = 0 AND delisted_at IS NULL
             ORDER BY favorited_at DESC
         """).fetchall()
     return jsonify([dict(r) for r in rows])
@@ -287,6 +465,7 @@ def api_stats():
             FROM jobs j
             LEFT JOIN job_user_states s ON j.id = s.job_id
             WHERE j.is_deleted = 0
+              AND j.delisted_at IS NULL
               AND COALESCE(s.state, 'new') != 'hidden'
               AND (? = 0 OR (j.urgency IS NULL OR j.urgency != 'high'))
         """, (urgent_p,)).fetchone()
@@ -294,6 +473,7 @@ def api_stats():
             SELECT j.source, COUNT(*) AS cnt
             FROM jobs j LEFT JOIN job_user_states s ON j.id = s.job_id
             WHERE j.is_deleted = 0
+              AND j.delisted_at IS NULL
               AND COALESCE(s.state, 'new') != 'hidden'
               AND (? = 0 OR (j.urgency IS NULL OR j.urgency != 'high'))
               AND (? = 0 OR j.is_whv_friendly = 1)
@@ -303,6 +483,7 @@ def api_stats():
             SELECT COALESCE(s.state,'new') AS state, COUNT(*) AS cnt
             FROM jobs j LEFT JOIN job_user_states s ON j.id = s.job_id
             WHERE j.is_deleted = 0
+              AND j.delisted_at IS NULL
               AND (? = 0 OR (j.urgency IS NULL OR j.urgency != 'high'))
             GROUP BY state
         """, (urgent_p,)).fetchall()
@@ -313,6 +494,47 @@ def api_stats():
         "by_source": {r["source"]: r["cnt"] for r in by_source},
         "by_state":  {r["state"]:  r["cnt"] for r in by_state},
     })
+
+
+# ── Dashboard routes ──────────────────────────────────────────────────────────
+
+@app.route("/dashboard")
+def dashboard():
+    return render_template("dashboard.html")
+
+
+@app.route("/dashboard/send-report", methods=["POST"])
+def dashboard_send_report():
+    global _dash_running, _dash_done, _dash_error
+
+    body  = request.get_json(force=True) or {}
+    email = (body.get("email") or "").strip()
+    if "@" not in email or len(email) < 5:
+        return jsonify({"error": "請輸入有效的 email 地址（含 @）"}), 400
+    scope = body.get("scope") or "today"
+    if scope not in ("today", "all"):
+        scope = "today"
+
+    with _dash_lock:
+        if _dash_running:
+            return jsonify({"error": "流程執行中，請稍候再試"}), 409
+        _dash_logs.clear()
+        _dash_running = True
+        _dash_done    = False
+        _dash_error   = False
+
+    threading.Thread(target=_dash_pipeline, args=(email, scope), daemon=True).start()
+    return jsonify({"status": "started"})
+
+
+@app.route("/dashboard/status")
+def dashboard_status():
+    with _dash_lock:
+        return jsonify({
+            "logs":  list(_dash_logs),
+            "done":  _dash_done,
+            "error": _dash_error,
+        })
 
 
 if __name__ == "__main__":

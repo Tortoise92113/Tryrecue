@@ -6,7 +6,6 @@ main.py — single run of the full pipeline:
 """
 
 import logging
-import re
 import sys
 
 from config import load_config
@@ -14,33 +13,11 @@ from config import load_config
 import storage
 from analyze import run_analysis
 from classifier import GeminiNetworkError, classify_batch
+from filters import pre_filter
 from notifier import send_failure_alert, send_update_notification
 from sources import adzuna, backpacker_job_board, jora
 
 _log = logging.getLogger("main")
-
-_TITLE_BLOCK = re.compile(
-    r'\bsenior\b'
-    r'|\bchef\b'
-    r'|\bfarmer\b|\bfarming\b|\bfarm\s+manager\b|\bfarm\s+hand\b'
-    r'|\bfarm\s+worker\b|\bfarm\s+assistant\b|\bagricultural\b|\bagriculture\b',
-    re.IGNORECASE,
-)
-_LOCATION_BLOCK = re.compile(r'\bsydney\b', re.IGNORECASE)
-
-
-def _pre_filter(jobs: list[dict]) -> list[dict]:
-    kept, dropped = [], 0
-    for job in jobs:
-        title    = job.get("title", "")
-        location = job.get("location") or job.get("city") or ""
-        if _TITLE_BLOCK.search(title) or _LOCATION_BLOCK.search(location):
-            dropped += 1
-        else:
-            kept.append(job)
-    if dropped:
-        _log.info("pre-filter dropped %d jobs (title/location filter)", dropped)
-    return kept
 
 
 def run(config: dict | None = None):
@@ -76,7 +53,9 @@ def run(config: dict | None = None):
         except Exception as exc:
             _log.warning("Jora fetch failed: %s", exc)
 
-    all_jobs = _pre_filter(all_jobs)
+    all_jobs, dropped = pre_filter(all_jobs)
+    if dropped:
+        _log.info("pre-filter dropped %d jobs (title/location filter)", dropped)
 
     if not all_jobs:
         _log.warning("no jobs fetched from any source — exiting")
@@ -85,6 +64,12 @@ def run(config: dict | None = None):
     # ── 2. Store & find unclassified ──────────────────────────────────────
     inserted = storage.upsert_jobs(all_jobs)
     _log.info("inserted %d new jobs (%d total fetched)", inserted, len(all_jobs))
+
+    presence = storage.update_job_presence({j["id"] for j in all_jobs})
+    _log.info(
+        "=== job presence — revived: %d | newly delisted: %d ===",
+        presence["revived"], presence["newly_delisted"],
+    )
 
     unclassified_ids = storage.get_unclassified_job_ids()
     jobs_to_classify = [j for j in all_jobs if j["id"] in unclassified_ids]

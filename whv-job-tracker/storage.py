@@ -33,7 +33,10 @@ CREATE TABLE IF NOT EXISTS jobs (
     favorited_at    TEXT,
     is_deleted      INTEGER DEFAULT 0,
     deleted_at      TEXT,
-    is_purged       INTEGER DEFAULT 0
+    is_purged       INTEGER DEFAULT 0,
+    last_seen_at    TEXT,
+    missed_count    INTEGER NOT NULL DEFAULT 0,
+    delisted_at     TEXT
 );
 
 CREATE TABLE IF NOT EXISTS job_user_states (
@@ -52,6 +55,7 @@ CREATE INDEX IF NOT EXISTS idx_jobs_is_favorite   ON jobs(is_favorite);
 CREATE INDEX IF NOT EXISTS idx_jobs_is_purged     ON jobs(is_purged);
 CREATE INDEX IF NOT EXISTS idx_states_state       ON job_user_states(state);
 CREATE INDEX IF NOT EXISTS idx_jobs_deleted_fetched ON jobs(is_deleted, fetched_at DESC);
+CREATE INDEX IF NOT EXISTS idx_jobs_delisted        ON jobs(delisted_at);
 """
 
 
@@ -93,6 +97,12 @@ def _migrate(conn: sqlite3.Connection):
         conn.execute("ALTER TABLE jobs ADD COLUMN deleted_at TEXT DEFAULT NULL")
     if "is_purged" not in existing:
         conn.execute("ALTER TABLE jobs ADD COLUMN is_purged INTEGER DEFAULT 0")
+    if "last_seen_at" not in existing:
+        conn.execute("ALTER TABLE jobs ADD COLUMN last_seen_at TEXT")
+    if "missed_count" not in existing:
+        conn.execute("ALTER TABLE jobs ADD COLUMN missed_count INTEGER NOT NULL DEFAULT 0")
+    if "delisted_at" not in existing:
+        conn.execute("ALTER TABLE jobs ADD COLUMN delisted_at TEXT")
 
 
 def _dedup_batch(jobs: list[dict]) -> list[dict]:
@@ -135,13 +145,13 @@ def upsert_jobs(jobs: list[dict]) -> int:
         INSERT OR IGNORE INTO jobs (
             id, source, title, company, location, city,
             description, url, salary_min, salary_max,
-            posted_at, fetched_at,
+            posted_at, fetched_at, last_seen_at,
             is_whv_friendly, visa_sponsorship, accommodation,
             urgency, classifier_note, job_type, regional_area
         ) VALUES (
             :id, :source, :title, :company, :location, :city,
             :description, :url, :salary_min, :salary_max,
-            :posted_at, :fetched_at,
+            :posted_at, :fetched_at, :last_seen_at,
             :is_whv_friendly, :visa_sponsorship, :accommodation,
             :urgency, :classifier_note, :job_type, :regional_area
         )
@@ -152,7 +162,7 @@ def upsert_jobs(jobs: list[dict]) -> int:
         is_whv_friendly=None, visa_sponsorship=None, accommodation=None,
         urgency=None, classifier_note=None, job_type=None, regional_area=None,
     )
-    rows = [{**defaults, **j} for j in jobs]
+    rows = [{**defaults, **j, "last_seen_at": j.get("fetched_at")} for j in jobs]
     with get_conn() as conn:
         if job_ids:
             placeholders = ",".join("?" * len(job_ids))
@@ -186,7 +196,8 @@ def get_unclassified_job_ids() -> set[str]:
     """Return IDs of jobs not yet classified or that failed classification (is_whv_friendly = -1)."""
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT id FROM jobs WHERE is_whv_friendly IS NULL OR is_whv_friendly = -1"
+            "SELECT id FROM jobs WHERE (is_whv_friendly IS NULL OR is_whv_friendly = -1)"
+            " AND delisted_at IS NULL"
         ).fetchall()
     return {row["id"] for row in rows}
 
@@ -195,7 +206,8 @@ def get_unclassified_jobs() -> list[dict]:
     """Return full records for jobs not yet classified or that failed classification."""
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT * FROM jobs WHERE is_whv_friendly IS NULL OR is_whv_friendly = -1"
+            "SELECT * FROM jobs WHERE (is_whv_friendly IS NULL OR is_whv_friendly = -1)"
+            " AND delisted_at IS NULL"
         ).fetchall()
     return [dict(r) for r in rows]
 
@@ -207,7 +219,7 @@ def soft_delete_non_whv_jobs() -> int:
     with get_conn() as conn:
         return conn.execute(
             "UPDATE jobs SET is_deleted = 1, deleted_at = ? "
-            "WHERE is_whv_friendly = 0 AND is_deleted = 0",
+            "WHERE is_whv_friendly = 0 AND is_deleted = 0 AND delisted_at IS NULL",
             (now,)
         ).rowcount
 
@@ -231,7 +243,7 @@ def get_jobs(city: str = None, whv_only: bool = False,
              state_filter: str = None, job_types: list[str] = None,
              exclude_urgent: bool = False,
              limit: int = 200) -> list[sqlite3.Row]:
-    clauses, params = ["j.is_deleted = 0"], {}
+    clauses, params = ["j.is_deleted = 0", "j.delisted_at IS NULL"], {}
     if city:
         clauses.append("j.city = :city")
         params["city"] = city
@@ -313,6 +325,7 @@ def get_new_jobs_since(since_iso: str) -> list[sqlite3.Row]:
         FROM jobs j
         LEFT JOIN job_user_states s ON j.id = s.job_id
         WHERE j.fetched_at >= :since
+          AND j.delisted_at IS NULL
           AND COALESCE(s.state, 'new') = 'new'
         ORDER BY j.fetched_at DESC
     """
@@ -345,9 +358,55 @@ def get_todays_whv_jobs() -> list[dict]:
             WHERE date(fetched_at, 'localtime') = ?
               AND is_whv_friendly = 1
               AND is_deleted = 0
+              AND delisted_at IS NULL
             ORDER BY city, job_type, title
         """, (today,)).fetchall()
     return [dict(r) for r in rows]
+
+
+def update_job_presence(seen_job_ids: set[str]) -> dict:
+    """
+    Call after every fetch run with the set of IDs actually retrieved.
+    - Seen jobs: reset missed_count, update last_seen_at, revive if previously delisted.
+    - Unseen active jobs: increment missed_count; delist when >= 2.
+    Returns {"revived": N, "newly_delisted": M} for logging.
+    """
+    from datetime import datetime, timezone
+    if not seen_job_ids:
+        return {"revived": 0, "newly_delisted": 0}
+
+    now  = datetime.now(timezone.utc).isoformat()
+    ph   = ",".join("?" * len(seen_job_ids))
+    seen = list(seen_job_ids)
+
+    with get_conn() as conn:
+        revived = conn.execute(
+            f"SELECT COUNT(*) FROM jobs WHERE id IN ({ph}) AND delisted_at IS NOT NULL",
+            seen,
+        ).fetchone()[0]
+
+        conn.execute(
+            f"UPDATE jobs SET last_seen_at = ?, missed_count = 0, delisted_at = NULL"
+            f" WHERE id IN ({ph})",
+            [now, *seen],
+        )
+
+        conn.execute(
+            f"UPDATE jobs SET missed_count = missed_count + 1"
+            f" WHERE id NOT IN ({ph}) AND is_deleted = 0 AND delisted_at IS NULL",
+            seen,
+        )
+
+        newly_delisted = conn.execute(
+            "SELECT COUNT(*) FROM jobs WHERE missed_count >= 2 AND delisted_at IS NULL AND is_deleted = 0"
+        ).fetchone()[0]
+
+        conn.execute(
+            "UPDATE jobs SET delisted_at = ? WHERE missed_count >= 2 AND delisted_at IS NULL AND is_deleted = 0",
+            (now,),
+        )
+
+    return {"revived": revived, "newly_delisted": newly_delisted}
 
 
 if __name__ == "__main__":

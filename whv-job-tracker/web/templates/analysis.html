@@ -31,17 +31,25 @@
       box-shadow: 0 2px 6px rgba(0,0,0,0.15);
     }
     #top-bar h1 { font-size: 1.15rem; font-weight: 600; }
-    #back-link {
+    #top-bar-right {
       margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    #back-link, .top-nav-btn {
       color: rgba(255,255,255,0.85);
       text-decoration: none;
       font-size: 0.85rem;
       display: flex;
       align-items: center;
       gap: 4px;
-      transition: color 0.12s;
+      background: rgba(255,255,255,0.15);
+      border-radius: 8px;
+      padding: 5px 13px;
+      transition: background 0.15s, color 0.12s;
     }
-    #back-link:hover { color: #fff; }
+    #back-link:hover, .top-nav-btn:hover { background: rgba(255,255,255,0.25); color: #fff; }
 
     /* ── Body row ── */
     #body {
@@ -209,7 +217,12 @@
 
 <div id="top-bar">
   <h1>📊 WHV 工作分析</h1>
-  <a href="/" id="back-link">← 回主頁</a>
+  <div id="top-bar-right">
+    <a href="/" id="back-link">← 回主頁</a>
+    <a href="/favorites" class="top-nav-btn">★ 我的收藏</a>
+    <a href="/deleted" class="top-nav-btn">🗑 待刪除清單</a>
+    <a href="/dashboard" class="top-nav-btn">📬 發信</a>
+  </div>
 </div>
 
 <div id="body">
