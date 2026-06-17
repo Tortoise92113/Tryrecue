@@ -12,7 +12,7 @@ from config import load_config
 
 import storage
 from analyze import run_analysis
-from classifier import classify_batch
+from classifier import GeminiNetworkError, classify_batch
 from notifier import send_update_notification
 from sources import adzuna, backpacker_job_board, jora
 
@@ -94,11 +94,15 @@ def run(config: dict | None = None):
     )
 
     if jobs_to_classify:
-        classify_batch(
-            config,
-            jobs_to_classify,
-            on_result=lambda job_id, result: storage.update_classifier(job_id, result),
-        )
+        try:
+            classify_batch(
+                config,
+                jobs_to_classify,
+                on_result=lambda job_id, result: storage.update_classifier(job_id, result),
+            )
+        except GeminiNetworkError as exc:
+            _log.error("classification skipped — network unreachable: %s", exc)
+            source_errors.append("⚠️ Gemini 分類失敗（網路無法連線），職缺已儲存，下次執行補分類")
 
     deleted = storage.soft_delete_non_whv_jobs()
     if deleted:
@@ -139,6 +143,19 @@ def classify_only(config: dict | None = None):
     deleted = storage.soft_delete_non_whv_jobs()
     if deleted:
         _log.info("soft-deleted %d non-WHV-friendly jobs", deleted)
+
+    _log.info("running analysis snapshot…")
+    try:
+        run_analysis()
+    except Exception as exc:
+        _log.warning("analysis failed: %s", exc)
+
+    _log.info("sending update notification…")
+    try:
+        send_update_notification(config)
+    except Exception as exc:
+        _log.warning("email failed: %s", exc)
+
     _log.info("classify_only complete")
 
 
