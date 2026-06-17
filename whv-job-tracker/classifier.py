@@ -17,7 +17,7 @@ _GEMINI_API_HOST = "generativelanguage.googleapis.com"
 _DNS_CHECK_TIMEOUT_SECONDS = float(os.getenv("GEMINI_DNS_CHECK_TIMEOUT", "5"))
 
 _DESC_TRUNCATE_LEN = 800   # max description chars sent to Gemini
-_NOTE_MAX_LEN = 200        # max classifier_note chars stored in DB
+_NOTE_MAX_LEN = 80         # max classifier_note chars stored in DB
 
 _logger = logging.getLogger("classifier")
 _logger.setLevel(logging.INFO)
@@ -27,9 +27,24 @@ class GeminiNetworkError(RuntimeError):
     """Raised when the Gemini API cannot be reached due to DNS/network failure."""
 
 
-# Gemini 2.5 Flash (non-thinking) pricing
-_PRICE_INPUT_PER_TOKEN  = 0.15 / 1_000_000   # $0.15 per 1M input tokens
-_PRICE_OUTPUT_PER_TOKEN = 0.60 / 1_000_000   # $0.60 per 1M output tokens
+_MODEL_PRICING = {
+    "gemini-2.5-flash": {
+        "input":  0.30 / 1_000_000,
+        "output": 2.50 / 1_000_000,
+    },
+    "gemini-2.5-flash-lite": {
+        "input":  0.10 / 1_000_000,
+        "output": 0.40 / 1_000_000,
+    },
+}
+
+
+def _get_pricing(model_name: str) -> dict:
+    for key, price in _MODEL_PRICING.items():
+        if key in model_name:
+            return price
+    _logger.warning("Unknown model %r for pricing, defaulting to flash rates", model_name)
+    return _MODEL_PRICING["gemini-2.5-flash"]
 
 _FAILURE_RESULT = {
     "is_whv_friendly":  -1,
@@ -47,7 +62,7 @@ Return ONLY valid JSON with these keys:
 - visa_sponsorship: 1=mentioned, 0=not
 - accommodation: 1=provided, 0=not
 - urgency: "high"(ASAP/immediately), "normal", or "low"
-- note: ≤20 words explaining is_whv_friendly decision
+- note: max 10 words explaining is_whv_friendly decision
 - job_type: "hospitality"|"hotel"|"retail"|"farm"|"office"|"other"
 - regional_area: true=regional AU (Cairns/Darwin/Townsville/Broome/Alice Springs/Hobart/rural), false=major city (Sydney/Melbourne/Brisbane/Perth/Adelaide/Canberra/Gold Coast), null=unknown
 
@@ -330,7 +345,8 @@ async def _classify_all(config: dict, jobs: list[dict], on_result) -> tuple[int,
     if token_counts:
         total_input  = sum(t[0] for t in token_counts)
         total_output = sum(t[1] for t in token_counts)
-        cost = total_input * _PRICE_INPUT_PER_TOKEN + total_output * _PRICE_OUTPUT_PER_TOKEN
+        pricing = _get_pricing(model_name)
+        cost = total_input * pricing["input"] + total_output * pricing["output"]
         token_suffix = f" | tokens in/out: {total_input:,}/{total_output:,} | cost: ${cost:.4f} USD"
     else:
         token_suffix = ""

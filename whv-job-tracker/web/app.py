@@ -90,14 +90,24 @@ def analysis_jobs_page(job_type: str, city: str):
 @app.route("/api/analysis/jobs/<job_type>/<path:city>")
 def api_analysis_jobs(job_type: str, city: str):
     with storage.get_conn() as conn:
-        rows = conn.execute("""
-            SELECT id, title, company, location, salary_min, salary_max,
-                   url, is_whv_friendly, regional_area, source, posted_at,
-                   is_favorite
-            FROM jobs
-            WHERE city = ? AND job_type = ?
-            ORDER BY posted_at DESC
-        """, (city, job_type)).fetchall()
+        if job_type == "unknown":
+            rows = conn.execute("""
+                SELECT id, title, company, location, salary_min, salary_max,
+                       url, is_whv_friendly, regional_area, source, posted_at,
+                       is_favorite
+                FROM jobs
+                WHERE city = ? AND job_type IS NULL
+                ORDER BY posted_at DESC
+            """, (city,)).fetchall()
+        else:
+            rows = conn.execute("""
+                SELECT id, title, company, location, salary_min, salary_max,
+                       url, is_whv_friendly, regional_area, source, posted_at,
+                       is_favorite
+                FROM jobs
+                WHERE city = ? AND job_type = ?
+                ORDER BY posted_at DESC
+            """, (city, job_type)).fetchall()
     return jsonify([dict(r) for r in rows])
 
 
@@ -250,8 +260,10 @@ def api_set_state(job_id):
 @app.route("/api/stats")
 def api_stats():
     whv_only = request.args.get("whv_only") == "1"
+    exclude_urgent = load_config().get("filters", {}).get("exclude_urgent", False)
+    urgent_clause = " AND (j.urgency IS NULL OR j.urgency != 'high')" if exclude_urgent else ""
     with storage.get_conn() as conn:
-        summary = conn.execute("""
+        summary = conn.execute(f"""
             SELECT COUNT(*) AS total,
                    SUM(CASE WHEN j.is_whv_friendly = 1 THEN 1 ELSE 0 END) AS whv,
                    SUM(CASE WHEN j.regional_area = 1 THEN 1 ELSE 0 END) AS regional
@@ -259,11 +271,13 @@ def api_stats():
             LEFT JOIN job_user_states s ON j.id = s.job_id
             WHERE j.is_deleted = 0
               AND COALESCE(s.state, 'new') != 'hidden'
+              {urgent_clause}
         """).fetchone()
         by_source_sql = (
             "SELECT j.source, COUNT(*) AS cnt "
             "FROM jobs j LEFT JOIN job_user_states s ON j.id = s.job_id "
             "WHERE j.is_deleted = 0 AND COALESCE(s.state, 'new') != 'hidden'"
+            + urgent_clause
             + (" AND j.is_whv_friendly = 1" if whv_only else "")
             + " GROUP BY j.source"
         )
@@ -271,7 +285,7 @@ def api_stats():
         by_state = conn.execute(
             "SELECT COALESCE(s.state,'new') AS state, COUNT(*) AS cnt "
             "FROM jobs j LEFT JOIN job_user_states s ON j.id=s.job_id "
-            "WHERE j.is_deleted = 0 "
+            f"WHERE j.is_deleted = 0{urgent_clause} "
             "GROUP BY state"
         ).fetchall()
     return jsonify({
