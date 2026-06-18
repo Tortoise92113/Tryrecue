@@ -308,6 +308,52 @@ def ensure_db():
         _db_ready = True
 
 
+# ── Auto-shutdown when the browser is closed (opt-in via AUTO_SHUTDOWN=1) ───────
+# Open pages send a heartbeat every few seconds; if none arrive for a grace
+# period (i.e. the last tab was closed), the server shuts itself down. The grace
+# period is longer than the ping interval so a page refresh / navigation does
+# not trip it. Disabled by default so `python app.py` dev runs are unaffected.
+_AUTO_SHUTDOWN = os.environ.get("AUTO_SHUTDOWN") == "1"
+_HEARTBEAT_INTERVAL = 3      # seconds between browser pings
+_HEARTBEAT_TIMEOUT = 8       # no ping for this long → shut down
+_last_beat = {"t": None}     # None until the first heartbeat arrives
+
+_HEARTBEAT_SNIPPET = (
+    "<script>(function(){function b(){fetch('/api/heartbeat',"
+    "{method:'POST',keepalive:true}).catch(function(){});}"
+    "b();setInterval(b,%d);})();</script>" % (_HEARTBEAT_INTERVAL * 1000)
+)
+
+
+@app.route("/api/heartbeat", methods=["POST"])
+def heartbeat():
+    _last_beat["t"] = datetime.now().timestamp()
+    return ("", 204)
+
+
+@app.after_request
+def _inject_heartbeat(resp):
+    if _AUTO_SHUTDOWN and (resp.content_type or "").startswith("text/html"):
+        try:
+            body = resp.get_data(as_text=True)
+            if "</body>" in body:
+                resp.set_data(body.replace("</body>", _HEARTBEAT_SNIPPET + "</body>", 1))
+        except Exception:
+            pass
+    return resp
+
+
+def _shutdown_watchdog():
+    while True:
+        threading.Event().wait(_HEARTBEAT_INTERVAL)
+        last = _last_beat["t"]
+        # Only arm after the first heartbeat; never kill a running pipeline.
+        if last is None or _dash_running:
+            continue
+        if datetime.now().timestamp() - last > _HEARTBEAT_TIMEOUT:
+            os._exit(0)
+
+
 # ── Pages ─────────────────────────────────────────────────────────────────────
 
 @app.route("/favorites")
@@ -631,4 +677,9 @@ def dashboard_status():
 if __name__ == "__main__":
     storage.init_db()
     port = int(os.environ.get("PORT", 5000))
-    app.run(debug=True, port=port)
+    # FLASK_DEBUG=0 (set by the background launcher) runs a single clean process
+    # with no auto-reloader; default keeps debug on for direct `python app.py` dev.
+    debug = os.environ.get("FLASK_DEBUG", "1") == "1"
+    if _AUTO_SHUTDOWN:
+        threading.Thread(target=_shutdown_watchdog, daemon=True).start()
+    app.run(debug=debug, port=port, use_reloader=debug)
