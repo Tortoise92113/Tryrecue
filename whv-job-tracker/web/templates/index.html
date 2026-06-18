@@ -318,6 +318,18 @@
   <div id="empty-msg">Loading jobs…</div>
 </div>
 
+<div id="load-more-bar" style="display:none;text-align:center;padding:20px 24px 40px">
+  <div id="load-more-count" style="font-size:0.85rem;color:#888;margin-bottom:12px"></div>
+  <button id="load-more-btn" onclick="loadMoreJobs()"
+    style="padding:8px 28px;border-radius:8px;border:1px solid #1a73e8;
+           background:#fff;color:#1a73e8;font-size:0.9rem;cursor:pointer;
+           transition:background 0.15s"
+    onmouseover="this.style.background='#e8f0fe'"
+    onmouseout="this.style.background='#fff'">
+    載入更多
+  </button>
+</div>
+
 <script>
   // ── Viewed jobs (localStorage) ────────────────────────────────────────────
   const LS_KEY = "whv_viewed_jobs";
@@ -332,7 +344,9 @@
   }
   let _viewedSet = getViewedJobs();
 
-  // viewFilter: 'all' | 'whv' | 'regional'  (預設 WHV 友善)
+  const PAGE_SIZE = 300;
+
+  // viewFilter: 'all' | 'whv' | 'regional'
   const state = {
     city: "",
     viewFilter: "whv",
@@ -340,6 +354,8 @@
     stateFilter: "",
     query: "",
     sourceFilter: null,
+    offset: 0,
+    total: null,
   };
 
   const SOURCE_CHIP_MAP = {
@@ -354,7 +370,7 @@
       Object.entries(SOURCE_CHIP_MAP).forEach(([id, s]) => {
         document.getElementById(id).classList.toggle('active', s === state.sourceFilter);
       });
-      renderJobs();
+      loadJobs();
     });
   });
 
@@ -395,30 +411,85 @@
     loadJobs();
     loadStats();
   });
+
   let allJobs = [];
   let _dbTotal = 0;
+  let _grandTotal = 0;
+
+  function updateStatTotal() {
+    const chip = document.getElementById("stat-total");
+    if (!_dbTotal) return;
+    if (state.total === null) {
+      chip.textContent = `全站共 ${_dbTotal} 筆`;
+    } else {
+      chip.textContent = `${state.total} / ${_dbTotal} 筆`;
+    }
+  }
 
   async function loadStats() {
     const params = state.viewFilter === 'whv' ? "?whv_only=1" : "";
     const s = await fetch("/api/stats" + params).then(r => r.json());
     _dbTotal = s.total;
-    document.getElementById("stat-total").textContent    = `全站共 ${s.total} 筆`;
-    document.getElementById("stat-whv").textContent      = `WHV 友善 ${s.whv_friendly} 筆`;
-    document.getElementById("stat-regional").textContent = `可集簽 ${s.regional ?? 0} 筆`;
+    updateStatTotal();
+    document.getElementById("stat-whv").textContent      = "WHV 友善";
+    document.getElementById("stat-regional").textContent = "可集簽";
     document.getElementById("stat-adzuna").textContent   = "Adzuna";
     document.getElementById("stat-bjb").textContent      = "BJB";
     document.getElementById("stat-jora").textContent     = "Jora";
   }
 
   async function loadJobs() {
+    state.offset = 0;
+    state.total  = null;
+    allJobs = [];
+    document.getElementById("job-list").innerHTML = '<div id="empty-msg">Loading…</div>';
+    document.getElementById("load-more-bar").style.display = "none";
+    await _fetchAndAppend();
+  }
+
+  async function _fetchAndAppend() {
     const params = new URLSearchParams();
-    if (state.city)        params.set("city", state.city);
-    if (state.viewFilter === 'whv') params.set("whv_only", "1");
-    if (state.jobTypes)    params.set("job_types", state.jobTypes);
-    if (state.stateFilter) params.set("state", state.stateFilter);
-    params.set("limit", "1000");
-    allJobs = await fetch("/api/jobs?" + params).then(r => r.json());
+    if (state.city)                      params.set("city", state.city);
+    if (state.viewFilter === 'whv')      params.set("whv_only", "1");
+    if (state.viewFilter === 'regional') params.set("regional_area", "1");
+    if (state.jobTypes)                  params.set("job_types", state.jobTypes);
+    if (state.stateFilter)               params.set("state", state.stateFilter);
+    if (state.sourceFilter)              params.set("source", state.sourceFilter);
+    params.set("limit",  PAGE_SIZE);
+    params.set("offset", state.offset);
+
+    const data  = await fetch("/api/jobs?" + params).then(r => r.json());
+    allJobs     = allJobs.concat(data.jobs);
+    state.total = data.total;
+    if (data.grand_total !== null && data.grand_total !== undefined) {
+      _grandTotal = data.grand_total;
+    }
     renderJobs();
+    updateLoadMoreBtn();
+  }
+
+  async function loadMoreJobs() {
+    const btn = document.getElementById('load-more-btn');
+    if (btn) { btn.disabled = true; btn.textContent = "載入中…"; }
+    state.offset += PAGE_SIZE;
+    await _fetchAndAppend();
+  }
+
+  function updateLoadMoreBtn() {
+    const bar     = document.getElementById('load-more-bar');
+    const btn     = document.getElementById('load-more-btn');
+    const countEl = document.getElementById('load-more-count');
+    if (!bar) return;
+    countEl.textContent = `已載入 ${allJobs.length} / ${state.total} 筆`;
+    bar.style.display = 'block';
+    if (allJobs.length >= state.total) {
+      btn.style.display = 'none';
+    } else {
+      btn.style.display = '';
+      btn.disabled = false;
+      btn.textContent = "載入更多";
+    }
+    updateStatTotal();
   }
 
   function renderJobs() {
@@ -430,15 +501,9 @@
         (j.title || "").toLowerCase().includes(q) ||
         (j.company || "").toLowerCase().includes(q));
     }
-    if (state.viewFilter === 'regional') {
-      jobs = jobs.filter(j => j.regional_area === 1);
-    }
-    if (state.sourceFilter) {
-      jobs = jobs.filter(j => j.source === state.sourceFilter);
-    }
 
     document.getElementById("filter-count").textContent =
-      `${jobs.length} / ${_dbTotal} jobs`;
+      q ? `${jobs.length} 筆 (搜尋)` : `${state.total} / ${_grandTotal} jobs`;
 
     const list = document.getElementById("job-list");
     if (!jobs.length) {
@@ -468,8 +533,8 @@
         const card = btn.closest(".job-card");
         if (card) card.remove();
         allJobs = allJobs.filter(j => j.id !== jobId);
-        document.getElementById("filter-count").textContent =
-          allJobs.length ? `${allJobs.length} jobs` : "";
+        state.total = Math.max(0, state.total - 1);
+        updateLoadMoreBtn();
         loadStats();
       });
     });

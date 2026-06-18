@@ -55,7 +55,6 @@ CREATE INDEX IF NOT EXISTS idx_jobs_is_favorite   ON jobs(is_favorite);
 CREATE INDEX IF NOT EXISTS idx_jobs_is_purged     ON jobs(is_purged);
 CREATE INDEX IF NOT EXISTS idx_states_state       ON job_user_states(state);
 CREATE INDEX IF NOT EXISTS idx_jobs_deleted_fetched ON jobs(is_deleted, fetched_at DESC);
-CREATE INDEX IF NOT EXISTS idx_jobs_delisted        ON jobs(delisted_at);
 """
 
 
@@ -103,6 +102,7 @@ def _migrate(conn: sqlite3.Connection):
         conn.execute("ALTER TABLE jobs ADD COLUMN missed_count INTEGER NOT NULL DEFAULT 0")
     if "delisted_at" not in existing:
         conn.execute("ALTER TABLE jobs ADD COLUMN delisted_at TEXT")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_delisted ON jobs(delisted_at)")
 
 
 def _dedup_batch(jobs: list[dict]) -> list[dict]:
@@ -239,10 +239,12 @@ def set_user_state(job_id: str, state: str, note: str = None):
         conn.execute(sql, {"job_id": job_id, "state": state, "note": note, "updated_at": now})
 
 
-def get_jobs(city: str = None, whv_only: bool = False,
-             state_filter: str = None, job_types: list[str] = None,
-             exclude_urgent: bool = False,
-             limit: int = 200) -> list[sqlite3.Row]:
+def _build_jobs_where(
+    city: str = None, whv_only: bool = False,
+    state_filter: str = None, job_types: list[str] = None,
+    exclude_urgent: bool = False, source: str = None,
+    regional_area: int = None,
+) -> tuple[list, dict]:
     clauses, params = ["j.is_deleted = 0", "j.delisted_at IS NULL"], {}
     if city:
         clauses.append("j.city = :city")
@@ -259,7 +261,48 @@ def get_jobs(city: str = None, whv_only: bool = False,
         clauses.append(f"j.job_type IN ({placeholders})")
         for i, jt in enumerate(job_types):
             params[f"jt{i}"] = jt
+    if source:
+        clauses.append("j.source = :source")
+        params["source"] = source
+    if regional_area is not None:
+        clauses.append("j.regional_area = :regional_area")
+        params["regional_area"] = regional_area
     clauses.append("COALESCE(s.state, 'new') != 'hidden'")
+    return clauses, params
+
+
+def count_jobs(
+    city: str = None, whv_only: bool = False,
+    state_filter: str = None, job_types: list[str] = None,
+    exclude_urgent: bool = False, source: str = None,
+    regional_area: int = None,
+) -> int:
+    clauses, params = _build_jobs_where(
+        city=city, whv_only=whv_only, state_filter=state_filter,
+        job_types=job_types, exclude_urgent=exclude_urgent,
+        source=source, regional_area=regional_area,
+    )
+    where = " AND ".join(clauses)
+    sql = f"""
+        SELECT COUNT(*)
+        FROM jobs j
+        LEFT JOIN job_user_states s ON j.id = s.job_id
+        WHERE {where}
+    """
+    with get_conn() as conn:
+        return conn.execute(sql, params).fetchone()[0]
+
+
+def get_jobs(city: str = None, whv_only: bool = False,
+             state_filter: str = None, job_types: list[str] = None,
+             exclude_urgent: bool = False, source: str = None,
+             regional_area: int = None,
+             limit: int = 200, offset: int = 0) -> list[sqlite3.Row]:
+    clauses, params = _build_jobs_where(
+        city=city, whv_only=whv_only, state_filter=state_filter,
+        job_types=job_types, exclude_urgent=exclude_urgent,
+        source=source, regional_area=regional_area,
+    )
     where = " AND ".join(clauses)
     sql = f"""
         SELECT j.*, COALESCE(s.state, 'new') AS user_state, s.note AS user_note
@@ -267,9 +310,10 @@ def get_jobs(city: str = None, whv_only: bool = False,
         LEFT JOIN job_user_states s ON j.id = s.job_id
         WHERE {where}
         ORDER BY j.fetched_at DESC
-        LIMIT :limit
+        LIMIT :limit OFFSET :offset
     """
     params["limit"] = limit
+    params["offset"] = offset
     with get_conn() as conn:
         return conn.execute(sql, params).fetchall()
 
@@ -341,6 +385,18 @@ def fetched_today() -> bool:
         row = conn.execute(
             "SELECT 1 FROM jobs WHERE date(fetched_at, 'localtime') = ? LIMIT 1",
             (today,)
+        ).fetchone()
+    return row is not None
+
+
+def source_fetched_today(source: str) -> bool:
+    """Return True if any job from this source was fetched today."""
+    from datetime import date
+    today = date.today().isoformat()
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM jobs WHERE source = ? AND date(fetched_at, 'localtime') = ? LIMIT 1",
+            (source, today)
         ).fetchone()
     return row is not None
 

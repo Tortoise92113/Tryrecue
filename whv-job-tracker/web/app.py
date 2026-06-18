@@ -17,6 +17,38 @@ from filters import pre_filter
 from storage import ANALYTICS_DB, UNCLASSIFIED_JOB_TYPE
 
 _config_cache: dict | None = None
+_file_log_attached = False
+
+
+def _ensure_file_logging() -> None:
+    """Attach the weekly log file handler to the root logger if not already present.
+
+    run_scheduler.py calls _setup_logging() at startup which adds this handler.
+    When Flask is started directly via web/app.py that never runs, so dashboard-
+    triggered pipeline runs would skip the log file without this guard.
+    """
+    global _file_log_attached
+    if _file_log_attached:
+        return
+    root = logging.getLogger()
+    if any(isinstance(h, logging.FileHandler) for h in root.handlers):
+        _file_log_attached = True
+        return
+    try:
+        from run_scheduler import _WeeklyFileHandler
+        log_dir = Path(__file__).parent.parent / "logs"
+        log_dir.mkdir(exist_ok=True)
+        fmt = logging.Formatter(
+            "%(asctime)s [%(levelname)s] %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+        fh = _WeeklyFileHandler(log_dir)
+        fh.setFormatter(fmt)
+        root.addHandler(fh)
+        _file_log_attached = True
+    except Exception as exc:
+        print(f"[app] could not attach log file handler: {exc}", file=sys.stderr)
+
 
 # ── Dashboard shared state ────────────────────────────────────────────────────
 _dash_lock    = threading.Lock()
@@ -83,7 +115,7 @@ def _dash_fetch_and_classify(config: dict) -> None:
         except Exception as exc:
             _dlog(f"  ⚠  Jora 失敗: {exc}")
 
-    all_jobs, dropped = pre_filter(all_jobs)
+    all_jobs, dropped = pre_filter(all_jobs, config)
     if dropped:
         _dlog(f"  前置過濾排除 {dropped} 筆（職稱/地點）")
 
@@ -125,6 +157,7 @@ def _dash_fetch_and_classify(config: dict) -> None:
 def _dash_pipeline(recipient_email: str, scope: str = "today") -> None:
     global _dash_running, _dash_done, _dash_error
 
+    _ensure_file_logging()
     root_logger = logging.getLogger()
     root_logger.addHandler(_dash_buf_handler)
     if root_logger.level == logging.NOTSET or root_logger.level > logging.INFO:
@@ -132,7 +165,7 @@ def _dash_pipeline(recipient_email: str, scope: str = "today") -> None:
 
     try:
         from analyze import run_analysis
-        from report import generate_static_report
+        from report import generate_static_report, generate_pie_chart_report
         from notifier import send_report_email
 
         config = _get_config()
@@ -141,6 +174,36 @@ def _dash_pipeline(recipient_email: str, scope: str = "today") -> None:
         _dlog("📋 檢查今天是否已有抓取記錄...")
         if storage.fetched_today():
             _dlog("✅ 今天已有資料，跳過抓取")
+            # If Jora didn't run today (e.g. previous crash), fetch it now
+            if config.get("jora_scraping", False) and not storage.source_fetched_today("jora"):
+                from sources import jora as jora_src
+                from filters import pre_filter
+                _dlog("  → Jora 今天尚無資料（上次可能中斷），補抓取中...")
+                try:
+                    jora_jobs = jora_src.fetch(config)
+                    if jora_jobs:
+                        jora_jobs, dropped = pre_filter(jora_jobs, config)
+                        inserted = storage.upsert_jobs(jora_jobs)
+                        _dlog(f"  ✅ Jora 補抓完成：{len(jora_jobs)} 筆（新增 {inserted} 筆）")
+                    else:
+                        _dlog("  ⚠  Jora 補抓完成：0 筆")
+                except Exception as exc:
+                    _dlog(f"  ⚠  Jora 補抓失敗（不影響其他資料）: {exc}")
+            # Classify any jobs that weren't classified (e.g. from a crashed run)
+            unclassified = storage.get_unclassified_jobs()
+            if unclassified:
+                from classifier import GeminiNetworkError, classify_batch
+                _dlog(f"  → 發現 {len(unclassified)} 筆未分類職缺，補分類中...")
+                try:
+                    classified, failed = classify_batch(
+                        config, unclassified,
+                        on_result=lambda jid, r: storage.update_classifier(jid, r),
+                    )
+                    _dlog(f"  ✅ 補分類完成：{classified} 成功，{failed} 失敗")
+                except GeminiNetworkError as exc:
+                    _dlog(f"  ❌ 網路錯誤，無法分類：{exc}")
+                except Exception as exc:
+                    _dlog(f"  ⚠  分類失敗（不影響報告）: {exc}")
         else:
             _dlog("⏳ 今天尚未抓取，開始完整流程...")
             _dash_fetch_and_classify(config)
@@ -168,8 +231,18 @@ def _dash_pipeline(recipient_email: str, scope: str = "today") -> None:
         html = generate_static_report(jobs)
         _dlog(f"✅ 報告產生完成（{len(html):,} bytes）")
 
+        pdf_bytes = None
+        if scope == "all":
+            _dlog("📊 產生城市職缺分布圓餅圖 PDF...")
+            try:
+                with storage.get_conn() as conn:
+                    pdf_bytes = generate_pie_chart_report(conn)
+                _dlog(f"✅ PDF 產生完成（{len(pdf_bytes):,} bytes）")
+            except Exception as exc:
+                _dlog(f"⚠  PDF 產生失敗（不影響 HTML 寄送）: {exc}")
+
         _dlog(f"📧 寄送報告至 {recipient_email}...")
-        send_report_email(config, recipient_email, html)
+        send_report_email(config, recipient_email, html, pdf_bytes=pdf_bytes)
         _dlog("✅ 寄信成功！")
         _dlog("════════ 全部完成 ════════")
 
@@ -380,20 +453,38 @@ def api_jobs():
     city         = request.args.get("city") or None
     whv_only     = request.args.get("whv_only") == "1"
     state_filter = request.args.get("state") or None
+    source       = request.args.get("source") or None
     try:
-        limit = min(int(request.args.get("limit", 200)), 1000)
+        ra_str        = request.args.get("regional_area")
+        regional_area = int(ra_str) if ra_str is not None else None
+    except (ValueError, TypeError):
+        regional_area = None
+    try:
+        offset = max(0, int(request.args.get("offset", 0)))
+    except (ValueError, TypeError):
+        offset = 0
+    try:
+        limit = min(int(request.args.get("limit", 300)), 1000)
     except (ValueError, TypeError):
         return jsonify({"error": "invalid limit"}), 400
     job_types_raw = request.args.get("job_types") or ""
     job_types    = [t.strip() for t in job_types_raw.split(",") if t.strip()] or None
 
     exclude_urgent = _get_config().get("filters", {}).get("exclude_urgent", False)
-    rows = storage.get_jobs(city=city, whv_only=whv_only,
-                            state_filter=state_filter,
-                            job_types=job_types,
-                            exclude_urgent=exclude_urgent,
-                            limit=limit)
-    return jsonify([dict(r) for r in rows])
+    kwargs = dict(city=city, whv_only=whv_only, state_filter=state_filter,
+                  job_types=job_types, exclude_urgent=exclude_urgent,
+                  source=source, regional_area=regional_area)
+    total = storage.count_jobs(**kwargs)
+    rows  = storage.get_jobs(**kwargs, limit=limit, offset=offset)
+    # grand_total: view-context total (whv/regional/exclude_urgent only, no city/source/etc.)
+    # Only computed on first page to avoid redundant queries on load-more
+    grand_total = None
+    if offset == 0:
+        view_kwargs = dict(whv_only=whv_only, regional_area=regional_area,
+                           exclude_urgent=exclude_urgent)
+        grand_total = storage.count_jobs(**view_kwargs)
+    return jsonify({"jobs": [dict(r) for r in rows], "total": total,
+                    "grand_total": grand_total})
 
 
 @app.route("/api/jobs/<job_id>/soft_delete", methods=["POST"])

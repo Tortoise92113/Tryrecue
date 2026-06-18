@@ -121,17 +121,30 @@ def _build_text(user_name: str, summary: dict) -> str:
     return "\n".join(lines)
 
 
-def send_report_email(config: dict, recipient_email: str, html_content: str) -> None:
-    """Send the static HTML report as an email attachment."""
+def send_report_email(
+    config: dict,
+    recipient_email: str,
+    html_content: str,
+    pdf_bytes: bytes | None = None,
+) -> None:
+    """Send the static HTML report as an email attachment.
+
+    If pdf_bytes is provided (scope=all mode), it is attached as a second
+    file containing per-city job_type pie charts.
+    """
     from email.mime.application import MIMEApplication
 
     today   = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     fname   = f"whv-report-{today}.html"
     subject = f"[WHV Tracker] 今日職缺報告 — {today}"
-    body    = (
-        f"今日 WHV 職缺報告已產生。\n"
-        f"請開啟附件 {fname} 查看互動式職缺清單（支援城市、類型篩選）。"
-    )
+    body_lines = [
+        f"今日 WHV 職缺報告已產生。",
+        f"請開啟附件 {fname} 查看互動式職缺清單（支援城市、類型篩選）。",
+    ]
+    if pdf_bytes is not None:
+        pdf_fname = f"whv-city-distribution-{today}.pdf"
+        body_lines.append(f"附件 {pdf_fname} 為各城市職缺類型圓餅圖。")
+    body = "\n".join(body_lines)
 
     msg = MIMEMultipart("mixed")
     msg["Subject"] = subject
@@ -142,6 +155,11 @@ def send_report_email(config: dict, recipient_email: str, html_content: str) -> 
     att = MIMEApplication(html_content.encode("utf-8"), Name=fname)
     att["Content-Disposition"] = f'attachment; filename="{fname}"'
     msg.attach(att)
+
+    if pdf_bytes is not None:
+        pdf_att = MIMEApplication(pdf_bytes, Name=pdf_fname)
+        pdf_att["Content-Disposition"] = f'attachment; filename="{pdf_fname}"'
+        msg.attach(pdf_att)
 
     smtp_server  = config["email"]["smtp_server"]
     smtp_port    = int(config["email"]["smtp_port"])

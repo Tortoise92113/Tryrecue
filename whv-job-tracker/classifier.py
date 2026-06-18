@@ -10,9 +10,9 @@ import threading
 from google import genai
 
 MAX_RETRIES = 5
-SEMAPHORE_LIMIT = int(os.getenv("GEMINI_CONCURRENCY", "8"))
+SEMAPHORE_LIMIT = int(os.getenv("GEMINI_CONCURRENCY", "4"))
 _RAMP_INITIAL = 1     # concurrent requests at cold start
-_RAMP_SECONDS = 30.0  # seconds to ramp from _RAMP_INITIAL to SEMAPHORE_LIMIT
+_RAMP_SECONDS = 20.0  # seconds to ramp from _RAMP_INITIAL to SEMAPHORE_LIMIT
 _GEMINI_API_HOST = "generativelanguage.googleapis.com"
 _DNS_CHECK_TIMEOUT_SECONDS = float(os.getenv("GEMINI_DNS_CHECK_TIMEOUT", "5"))
 
@@ -187,7 +187,7 @@ def _resolve_host_error(host: str, timeout: float = _DNS_CHECK_TIMEOUT_SECONDS) 
     return f"DNS lookup for {host} timed out after {timeout:.1f}s"
 
 
-def _backoff_time(attempt: int, base: float = 2.0, max_wait: float = 60.0) -> float:
+def _backoff_time(attempt: int, base: float = 2.5, max_wait: float = 40.0) -> float:
     """Exponential backoff with ±30% jitter. attempt starts at 0."""
     wait = base ** attempt
     jitter = wait * 0.3 * random.uniform(-1, 1)

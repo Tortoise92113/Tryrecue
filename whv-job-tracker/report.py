@@ -91,6 +91,95 @@ render();
 </script>"""
 
 
+_PIE_COLORS = {
+    "hospitality": "#4A90D9",
+    "hotel":       "#E8637A",
+    "retail":      "#A78BDB",
+    "farm":        "#F7D154",
+    "office":      "#F4A742",
+    "other":       "#5BC8A0",
+}
+_PIE_DEFAULT_COLOR = "#B0B0B0"
+
+
+def generate_pie_chart_report(conn) -> bytes:
+    """Generate a PDF of per-city job_type pie charts.
+    Cities are read dynamically from the DB — no hardcoded list."""
+    import io
+    import math
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.backends.backend_pdf import PdfPages
+
+    rows = conn.execute("""
+        SELECT city, job_type, COUNT(*) AS cnt
+        FROM jobs
+        WHERE delisted_at IS NULL AND is_deleted = 0
+        GROUP BY city, job_type
+        ORDER BY city
+    """).fetchall()
+
+    city_data: dict[str, dict[str, int]] = {}
+    for r in rows:
+        city = r[0] or "Unknown"
+        jt   = r[1] or "other"
+        cnt  = r[2]
+        if city not in city_data:
+            city_data[city] = {}
+        city_data[city][jt] = city_data[city].get(jt, 0) + cnt
+
+    # Sort by total count descending
+    cities = sorted(city_data.keys(), key=lambda c: -sum(city_data[c].values()))
+
+    buf = io.BytesIO()
+    with PdfPages(buf) as pdf:
+        if not cities:
+            fig, ax = plt.subplots(figsize=(8, 4))
+            ax.text(0.5, 0.5, "No job data available", ha="center", va="center", fontsize=14)
+            ax.axis("off")
+            pdf.savefig(fig, bbox_inches="tight")
+            plt.close(fig)
+            return buf.getvalue()
+
+        COLS           = 2
+        ROWS_PER_PAGE  = 3
+        charts_per_page = COLS * ROWS_PER_PAGE
+
+        for page_start in range(0, len(cities), charts_per_page):
+            batch  = cities[page_start : page_start + charts_per_page]
+            n_rows = math.ceil(len(batch) / COLS)
+            fig, axs = plt.subplots(n_rows, COLS, figsize=(14, 5 * n_rows), squeeze=False)
+            fig.suptitle(
+                "WHV Job Tracker — Job Type Distribution by City",
+                fontsize=13, fontweight="bold",
+            )
+            axes_flat = [axs[r][c] for r in range(n_rows) for c in range(COLS)]
+
+            for i, city in enumerate(batch):
+                ax     = axes_flat[i]
+                d      = city_data[city]
+                keys   = list(d.keys())
+                labels = [k.capitalize() for k in keys]
+                values = list(d.values())
+                colors = [_PIE_COLORS.get(k, _PIE_DEFAULT_COLOR) for k in keys]
+                total  = sum(values)
+                ax.pie(
+                    values, labels=labels, colors=colors,
+                    autopct="%1.1f%%", startangle=90, pctdistance=0.80,
+                )
+                ax.set_title(f"{city}  ({total} jobs)", fontsize=11, fontweight="bold", pad=14)
+
+            for i in range(len(batch), len(axes_flat)):
+                axes_flat[i].set_visible(False)
+
+            plt.tight_layout(rect=[0, 0, 1, 0.95])
+            pdf.savefig(fig, bbox_inches="tight")
+            plt.close(fig)
+
+    return buf.getvalue()
+
+
 def generate_static_report(jobs: list[dict]) -> str:
     today = date.today().strftime("%Y-%m-%d")
     total = len(jobs)

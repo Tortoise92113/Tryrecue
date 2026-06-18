@@ -53,7 +53,7 @@ def run(config: dict | None = None):
         except Exception as exc:
             _log.warning("Jora fetch failed: %s", exc)
 
-    all_jobs, dropped = pre_filter(all_jobs)
+    all_jobs, dropped = pre_filter(all_jobs, config)
     if dropped:
         _log.info("pre-filter dropped %d jobs (title/location filter)", dropped)
 

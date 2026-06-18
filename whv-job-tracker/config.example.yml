@@ -46,3 +46,20 @@ jora_scraping: true
 
 filters:
   exclude_urgent: false  # 設 true 可過濾 urgency=high 的職缺
+
+  # 職缺「標題」含有以下任一關鍵字就會在抓取後、分類前被丟掉（不分大小寫，整字比對）。
+  # 片語可用空白分隔（例如 "farm manager" 會比對連續的 farm + manager）。留空 [] = 不封鎖。
+  title_block:
+    - senior
+    - chef
+    - farmer
+    - farming
+    - farm manager
+    - farm hand
+    - farm worker
+    - farm assistant
+    - agricultural
+    - agriculture
+
+  # 職缺「地點」封鎖關鍵字；留空 [] 代表不封鎖任何地點。
+  location_block: []
