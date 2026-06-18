@@ -1,6 +1,6 @@
 # 私人設定
 config.yml
-.bat
+*.bat
 
 # gstack / Claude Code 工具資料
 .gstack/
