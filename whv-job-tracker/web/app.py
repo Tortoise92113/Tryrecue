@@ -314,20 +314,42 @@ def ensure_db():
 # period is longer than the ping interval so a page refresh / navigation does
 # not trip it. Disabled by default so `python app.py` dev runs are unaffected.
 _AUTO_SHUTDOWN = os.environ.get("AUTO_SHUTDOWN") == "1"
-_HEARTBEAT_INTERVAL = 3      # seconds between browser pings
-_HEARTBEAT_TIMEOUT = 8       # no ping for this long → shut down
+_HEARTBEAT_INTERVAL = 3      # seconds between browser pings (foreground)
+# Fast path: when a tab fires `pagehide` it sends an "unload" beacon. The server
+# waits this grace period; any heartbeat in the meantime (a navigation's new page,
+# or another still-open tab) cancels the shutdown. So closing the browser stops
+# the server in ~_CLOSE_GRACE seconds, while page navigation / multi-tab survive.
+_CLOSE_GRACE = 8
+# Backstop: if the unload beacon never fires (crash, hard close) and no heartbeat
+# arrives for this long, shut down anyway. Well above the ~60s background-tab
+# timer throttle so an idle/backgrounded tab is never killed by mistake.
+_HEARTBEAT_TIMEOUT = 120
 _last_beat = {"t": None}     # None until the first heartbeat arrives
+_closing = {"t": None}       # set when a tab unloads; cleared by any heartbeat
 
+# Beat on load + interval, immediately on regaining visibility/focus, and send an
+# unload beacon on pagehide so a real browser close shuts the server down fast.
 _HEARTBEAT_SNIPPET = (
-    "<script>(function(){function b(){fetch('/api/heartbeat',"
-    "{method:'POST',keepalive:true}).catch(function(){});}"
-    "b();setInterval(b,%d);})();</script>" % (_HEARTBEAT_INTERVAL * 1000)
+    "<script>(function(){"
+    "function b(){fetch('/api/heartbeat',{method:'POST',keepalive:true}).catch(function(){});}"
+    "b();setInterval(b,%d);"
+    "document.addEventListener('visibilitychange',function(){if(!document.hidden)b();});"
+    "window.addEventListener('focus',b);"
+    "window.addEventListener('pagehide',function(){try{navigator.sendBeacon('/api/unload');}catch(e){}});"
+    "})();</script>" % (_HEARTBEAT_INTERVAL * 1000)
 )
 
 
 @app.route("/api/heartbeat", methods=["POST"])
 def heartbeat():
     _last_beat["t"] = datetime.now().timestamp()
+    _closing["t"] = None          # a live page → cancel any pending close
+    return ("", 204)
+
+
+@app.route("/api/unload", methods=["POST"])
+def unload():
+    _closing["t"] = datetime.now().timestamp()
     return ("", 204)
 
 
@@ -345,12 +367,18 @@ def _inject_heartbeat(resp):
 
 def _shutdown_watchdog():
     while True:
-        threading.Event().wait(_HEARTBEAT_INTERVAL)
+        threading.Event().wait(2)
         last = _last_beat["t"]
         # Only arm after the first heartbeat; never kill a running pipeline.
         if last is None or _dash_running:
             continue
-        if datetime.now().timestamp() - last > _HEARTBEAT_TIMEOUT:
+        now = datetime.now().timestamp()
+        closing = _closing["t"]
+        # Fast path: a tab unloaded and nothing has beaten since (real close).
+        if closing is not None and now - closing > _CLOSE_GRACE:
+            os._exit(0)
+        # Backstop: no heartbeat at all for a long time.
+        if now - last > _HEARTBEAT_TIMEOUT:
             os._exit(0)
 
 

@@ -144,4 +144,3 @@ def fetch(config: dict) -> list[dict]:
 
     print(f"[jora] fetched {len(results)} unique jobs", file=sys.stderr)
     return list(results.values())
-1

@@ -454,11 +454,11 @@ def update_job_presence(seen_job_ids: set[str]) -> dict:
         )
 
         newly_delisted = conn.execute(
-            "SELECT COUNT(*) FROM jobs WHERE missed_count >= 2 AND delisted_at IS NULL AND is_deleted = 0"
+            "SELECT COUNT(*) FROM jobs WHERE missed_count >= 3 AND delisted_at IS NULL AND is_deleted = 0"
         ).fetchone()[0]
 
         conn.execute(
-            "UPDATE jobs SET delisted_at = ? WHERE missed_count >= 2 AND delisted_at IS NULL AND is_deleted = 0",
+            "UPDATE jobs SET delisted_at = ? WHERE missed_count >= 3 AND delisted_at IS NULL AND is_deleted = 0",
             (now,),
         )
 
