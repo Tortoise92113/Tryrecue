@@ -43,16 +43,23 @@ def init_analytics_db(conn: sqlite3.Connection) -> None:
 
 def fetch_cross_table(jobs_conn: sqlite3.Connection) -> tuple[list[tuple], int]:
     cur = jobs_conn.cursor()
+    # Count only in-stock jobs (not deleted / not delisted) so the pie chart
+    # matches the drill-down list and the homepage. Otherwise stale deleted /
+    # delisted jobs inflate the chart and a slice can be empty when clicked.
     cur.execute("""
         SELECT city, job_type, COUNT(*) as count
         FROM jobs
         WHERE city IS NOT NULL
+          AND is_deleted = 0 AND delisted_at IS NULL
         GROUP BY city, job_type
         ORDER BY city, count DESC
     """)
     rows = cur.fetchall()
 
-    cur.execute("SELECT COUNT(*) FROM jobs WHERE city IS NOT NULL")
+    cur.execute(
+        "SELECT COUNT(*) FROM jobs"
+        " WHERE city IS NOT NULL AND is_deleted = 0 AND delisted_at IS NULL"
+    )
     total = cur.fetchone()[0]
     return rows, total
 
