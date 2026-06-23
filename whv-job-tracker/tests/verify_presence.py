@@ -81,25 +81,35 @@ def run():
             assert rC["delisted_at"] is None, "C: still not delisted (only 1 miss)"
         print(f"[Run 2] only A: B.missed=1 C.missed=1 OK")
 
-        # Run 3: only A again -> B C missed_count = 2 -> delisted
+        # Run 3: only A again -> B C missed_count = 2, NOT yet delisted (threshold is 3)
         p3 = storage.update_job_presence({"A"})
         with storage.get_conn() as conn:
             rB = _row(conn, "B"); rC = _row(conn, "C")
             assert rB["missed_count"] == 2, f"B: {rB['missed_count']} (expected 2)"
-            assert rB["delisted_at"] is not None, "B: should be delisted after 2 misses"
-            assert rC["delisted_at"] is not None, "C: should be delisted after 2 misses"
-        print(f"[Run 3] only A: B C delisted OK  newly_delisted={p3['newly_delisted']}")
-        assert p3["newly_delisted"] == 2, f"newly_delisted={p3['newly_delisted']} (expected 2)"
+            assert rB["delisted_at"] is None, "B: should NOT be delisted yet (need 3 misses)"
+            assert rC["delisted_at"] is None, "C: should NOT be delisted yet (need 3 misses)"
+        print(f"[Run 3] only A: B.missed=2 C.missed=2 (not delisted yet) OK")
+        assert p3["newly_delisted"] == 0, f"newly_delisted={p3['newly_delisted']} (expected 0)"
 
-        # Run 4: B reappears -> revived
-        p4 = storage.update_job_presence({"A", "B"})
+        # Run 4: only A again -> B C missed_count = 3 -> delisted
+        p4 = storage.update_job_presence({"A"})
+        with storage.get_conn() as conn:
+            rB = _row(conn, "B"); rC = _row(conn, "C")
+            assert rB["missed_count"] == 3, f"B: {rB['missed_count']} (expected 3)"
+            assert rB["delisted_at"] is not None, "B: should be delisted after 3 misses"
+            assert rC["delisted_at"] is not None, "C: should be delisted after 3 misses"
+        print(f"[Run 4] only A: B C delisted OK  newly_delisted={p4['newly_delisted']}")
+        assert p4["newly_delisted"] == 2, f"newly_delisted={p4['newly_delisted']} (expected 2)"
+
+        # Run 5: B reappears -> revived
+        p5 = storage.update_job_presence({"A", "B"})
         with storage.get_conn() as conn:
             rB = _row(conn, "B"); rC = _row(conn, "C")
             assert rB["delisted_at"] is None, "B: should be revived"
             assert rB["missed_count"] == 0, f"B: missed_count={rB['missed_count']} after revival"
             assert rC["delisted_at"] is not None, "C: should remain delisted"
-        print(f"[Run 4] A+B seen: B revived OK  revived={p4['revived']}")
-        assert p4["revived"] == 1, f"revived={p4['revived']} (expected 1)"
+        print(f"[Run 5] A+B seen: B revived OK  revived={p5['revived']}")
+        assert p5["revived"] == 1, f"revived={p5['revived']} (expected 1)"
 
         print("\nAll checks passed. Production jobs.db was not touched.")
 

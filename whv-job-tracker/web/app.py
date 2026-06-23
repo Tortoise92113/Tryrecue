@@ -2,6 +2,7 @@ import os
 import sqlite3
 import sys
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -103,6 +104,8 @@ def heartbeat():
 
 @app.route("/api/unload", methods=["POST"])
 def unload():
+    if request.remote_addr not in ("127.0.0.1", "::1"):
+        return ("", 403)
     _closing["t"] = datetime.now().timestamp()
     return ("", 204)
 
@@ -121,10 +124,10 @@ def _inject_heartbeat(resp):
 
 def _shutdown_watchdog():
     while True:
-        threading.Event().wait(2)
+        time.sleep(2)
         last = _last_beat["t"]
-        # Only arm after the first heartbeat; never kill a running pipeline.
-        if last is None or _dash_running:
+        # Only arm after the first heartbeat.
+        if last is None:
             continue
         now = datetime.now().timestamp()
         closing = _closing["t"]
