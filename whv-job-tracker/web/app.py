@@ -255,11 +255,13 @@ def _dash_pipeline(recipient_email: str, scope: str = "today") -> None:
             from pages_publisher import publish_today, PublishResult
             pr: PublishResult = publish_today()
             if pr.push_ok:
-                _dlog(f"✅ Pages 推送完成：{pr.today_count} 筆 WHV 職缺")
-                _dlog(f"   🔗 {pr.pages_url}")
+                _dlog(f"✅ Pages 推送完成：今日 {pr.today_count} 筆 / 全部 {pr.all_count} 筆")
+                _dlog(f"   🔗 今日：{pr.today_url}")
+                _dlog(f"   🔗 全部：{pr.all_url}")
             else:
                 _dlog(f"⚠️  Pages 推送失敗（連結尚未更新）")
-                _dlog(f"   🔗 {pr.pages_url}")
+                _dlog(f"   🔗 今日：{pr.today_url}")
+                _dlog(f"   🔗 全部：{pr.all_url}")
         except Exception as exc:
             _dlog(f"⚠️  Pages 發布失敗（不影響寄信）: {exc}")
             pr = None
@@ -274,11 +276,14 @@ def _dash_pipeline(recipient_email: str, scope: str = "today") -> None:
             except Exception as exc:
                 _dlog(f"⚠  PDF 產生失敗（不影響寄信）: {exc}")
 
+        # scope="all" → full-report link; scope="today" → today-only link
+        report_url = (pr.all_url if scope == "all" else pr.today_url) if pr else None
+
         _dlog(f"📧 寄送報告至 {recipient_email}...")
         send_report_email(
             config, recipient_email,
             pdf_bytes=pdf_bytes,
-            pages_url=pr.pages_url if pr else None,
+            pages_url=report_url,
             push_ok=pr.push_ok if pr else False,
             today_count=pr.today_count if pr else 0,
             today_cities=pr.today_cities if pr else [],

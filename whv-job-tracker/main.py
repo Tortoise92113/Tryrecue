@@ -107,8 +107,9 @@ def run(config: dict | None = None):
         from pages_publisher import publish_today
         result = publish_today()
         _log.info(
-            "pages report: %s jobs → %s  (push_ok=%s)",
-            result.today_count, result.pages_url, result.push_ok,
+            "pages: today=%d %s | all=%d %s  (push_ok=%s)",
+            result.today_count, result.today_url,
+            result.all_count, result.all_url, result.push_ok,
         )
         if not result.push_ok:
             _log.warning("git push failed — Pages link may not be updated yet")

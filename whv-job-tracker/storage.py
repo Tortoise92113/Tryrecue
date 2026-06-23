@@ -420,6 +420,22 @@ def get_todays_whv_jobs() -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def get_all_whv_jobs() -> list[dict]:
+    """Return all active (non-deleted, non-delisted) WHV-friendly jobs."""
+    with get_conn() as conn:
+        rows = conn.execute("""
+            SELECT id, title, company, location, city, job_type,
+                   salary_min, salary_max, url, is_whv_friendly,
+                   regional_area, source, urgency, classifier_note
+            FROM jobs
+            WHERE is_whv_friendly = 1
+              AND is_deleted = 0
+              AND delisted_at IS NULL
+            ORDER BY city, job_type, title
+        """).fetchall()
+    return [dict(r) for r in rows]
+
+
 def backfill_jora_city() -> int:
     """Re-derive city from location text for active Jora jobs.
 
