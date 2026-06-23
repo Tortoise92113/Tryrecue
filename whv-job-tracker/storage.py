@@ -420,11 +420,68 @@ def get_todays_whv_jobs() -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def backfill_jora_city() -> int:
+    """Re-derive city from location text for active Jora jobs.
+
+    Historical records had city set to the search query parameter (e.g. "Perth")
+    instead of the actual job location. Reads location, strips trailing state
+    abbreviation and postcode, writes the remainder back as city.
+    """
+    import re
+    _state_re = re.compile(r'\s+[A-Z]{2,3}(?:\s+\d{4})?$')
+
+    def _parse(location: str | None) -> str | None:
+        if not location:
+            return None
+        cleaned = _state_re.sub('', location.strip()).strip()
+        return cleaned or None
+
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, location FROM jobs"
+            " WHERE source = 'jora' AND delisted_at IS NULL AND is_deleted = 0"
+        ).fetchall()
+        updated = 0
+        for row in rows:
+            city = _parse(row["location"])
+            if city:
+                conn.execute("UPDATE jobs SET city = ? WHERE id = ?", (city, row["id"]))
+                updated += 1
+    return updated
+
+
+def mark_jobs_seen(job_ids: set[str]) -> int:
+    """Reset missed_count / revive specific jobs without penalising unseen jobs.
+
+    Use for targeted catch-up scrapes where only one source is re-fetched.
+    Calling update_job_presence would incorrectly increment missed_count for
+    jobs from other sources that weren't part of this partial run.
+    Returns the number of revived jobs (were delisted, now active).
+    """
+    from datetime import datetime, timezone
+    if not job_ids:
+        return 0
+    now = datetime.now(timezone.utc).isoformat()
+    ph  = ",".join("?" * len(job_ids))
+    ids = list(job_ids)
+    with get_conn() as conn:
+        revived = conn.execute(
+            f"SELECT COUNT(*) FROM jobs WHERE id IN ({ph}) AND delisted_at IS NOT NULL",
+            ids,
+        ).fetchone()[0]
+        conn.execute(
+            f"UPDATE jobs SET last_seen_at = ?, missed_count = 0, delisted_at = NULL"
+            f" WHERE id IN ({ph})",
+            [now, *ids],
+        )
+    return revived
+
+
 def update_job_presence(seen_job_ids: set[str]) -> dict:
     """
     Call after every fetch run with the set of IDs actually retrieved.
     - Seen jobs: reset missed_count, update last_seen_at, revive if previously delisted.
-    - Unseen active jobs: increment missed_count; delist when >= 2.
+    - Unseen active jobs: increment missed_count; delist when >= 3.
     Returns {"revived": N, "newly_delisted": M} for logging.
     """
     from datetime import datetime, timezone

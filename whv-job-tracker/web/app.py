@@ -3,6 +3,7 @@ import os
 import sqlite3
 import sys
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -51,11 +52,14 @@ def _ensure_file_logging() -> None:
 
 
 # ── Dashboard shared state ────────────────────────────────────────────────────
-_dash_lock    = threading.Lock()
+_dash_lock     = threading.Lock()
 _dash_logs: list[str] = []
-_dash_running = False
-_dash_done    = False
-_dash_error   = False
+_dash_running  = False
+_dash_done     = False
+_dash_error    = False
+_dash_start_at: float | None = None   # wall-clock start time of current pipeline run
+
+PIPELINE_TIMEOUT = 3600  # seconds before watchdog force-kills a hung pipeline
 
 
 def _dlog(msg: str) -> None:
@@ -155,7 +159,7 @@ def _dash_fetch_and_classify(config: dict) -> None:
 
 
 def _dash_pipeline(recipient_email: str, scope: str = "today") -> None:
-    global _dash_running, _dash_done, _dash_error
+    global _dash_running, _dash_done, _dash_error, _dash_start_at
 
     _ensure_file_logging()
     root_logger = logging.getLogger()
@@ -174,6 +178,30 @@ def _dash_pipeline(recipient_email: str, scope: str = "today") -> None:
         _dlog("📋 檢查今天是否已有抓取記錄...")
         if storage.fetched_today():
             _dlog("✅ 今天已有資料，跳過抓取")
+            from datetime import date as _date
+            _today = _date.today().isoformat()
+            with storage.get_conn() as _conn:
+                _src_rows = _conn.execute(
+                    "SELECT source, COUNT(*) AS cnt FROM jobs"
+                    " WHERE date(fetched_at, 'localtime') = ? AND is_deleted = 0"
+                    " GROUP BY source ORDER BY cnt DESC",
+                    (_today,),
+                ).fetchall()
+                _presence = _conn.execute(
+                    "SELECT"
+                    "  SUM(CASE WHEN date(delisted_at,'localtime')=? THEN 1 ELSE 0 END) AS delisted,"
+                    "  SUM(CASE WHEN date(last_seen_at,'localtime')=? AND missed_count=0"
+                    "           AND delisted_at IS NULL"
+                    "           AND date(fetched_at,'localtime')!=? THEN 1 ELSE 0 END) AS revived"
+                    " FROM jobs WHERE is_deleted=0",
+                    (_today, _today, _today),
+                ).fetchone()
+            _parts = "、".join(f"{r['source']} {r['cnt']} 筆" for r in _src_rows)
+            _total = sum(r['cnt'] for r in _src_rows)
+            _dlog(f"  📊 今日抓取：{_parts}（共 {_total} 筆）")
+            _d, _r = _presence["delisted"] or 0, _presence["revived"] or 0
+            if _d or _r:
+                _dlog(f"  📊 自動下架：{_d} 筆 | 重新上架：{_r} 筆")
             # If Jora didn't run today (e.g. previous crash), fetch it now
             if config.get("jora_scraping", False) and not storage.source_fetched_today("jora"):
                 from sources import jora as jora_src
@@ -184,7 +212,14 @@ def _dash_pipeline(recipient_email: str, scope: str = "today") -> None:
                     if jora_jobs:
                         jora_jobs, dropped = pre_filter(jora_jobs, config)
                         inserted = storage.upsert_jobs(jora_jobs)
-                        _dlog(f"  ✅ Jora 補抓完成：{len(jora_jobs)} 筆（新增 {inserted} 筆）")
+                        # Reset missed_count for re-fetched jobs without penalising
+                        # other sources (calling update_job_presence would increment
+                        # missed_count for Adzuna/BJB jobs not in this partial run).
+                        revived = storage.mark_jobs_seen({j["id"] for j in jora_jobs})
+                        msg = f"  ✅ Jora 補抓完成：{len(jora_jobs)} 筆（新增 {inserted} 筆）"
+                        if revived:
+                            msg += f"，復活 {revived} 筆"
+                        _dlog(msg)
                     else:
                         _dlog("  ⚠  Jora 補抓完成：0 筆")
                 except Exception as exc:
@@ -246,22 +281,19 @@ def _dash_pipeline(recipient_email: str, scope: str = "today") -> None:
         _dlog("✅ 寄信成功！")
         _dlog("════════ 全部完成 ════════")
 
-        with _dash_lock:
-            _dash_done = True
-
     except Exception as exc:
         import traceback
         _dlog(f"❌ 流程失敗：{exc}")
         _dlog(traceback.format_exc())
         with _dash_lock:
-            _dash_done  = True
             _dash_error = True
 
     finally:
         root_logger.removeHandler(_dash_buf_handler)
         with _dash_lock:
-            _dash_running = False
-            _dash_done = True
+            _dash_running  = False
+            _dash_done     = True
+            _dash_start_at = None
 
 
 def _get_config() -> dict:
@@ -349,6 +381,8 @@ def heartbeat():
 
 @app.route("/api/unload", methods=["POST"])
 def unload():
+    if request.remote_addr not in ("127.0.0.1", "::1"):
+        return ("", 403)
     _closing["t"] = datetime.now().timestamp()
     return ("", 204)
 
@@ -359,6 +393,10 @@ def _inject_heartbeat(resp):
         try:
             body = resp.get_data(as_text=True)
             if "</body>" in body:
+                # Serving a new HTML page means a live tab is navigating to it —
+                # reset the close countdown immediately rather than waiting for the
+                # new page's first heartbeat POST (which could take a few seconds).
+                _closing["t"] = None
                 resp.set_data(body.replace("</body>", _HEARTBEAT_SNIPPET + "</body>", 1))
         except Exception:
             pass
@@ -367,10 +405,19 @@ def _inject_heartbeat(resp):
 
 def _shutdown_watchdog():
     while True:
-        threading.Event().wait(2)
+        time.sleep(2)
         last = _last_beat["t"]
-        # Only arm after the first heartbeat; never kill a running pipeline.
-        if last is None or _dash_running:
+        # Only arm after the first heartbeat.
+        if last is None:
+            continue
+        with _dash_lock:
+            running  = _dash_running
+            start_at = _dash_start_at
+        if running:
+            # Never kill an active pipeline — but force-exit if it has hung past the limit.
+            if start_at is not None and time.time() - start_at > PIPELINE_TIMEOUT:
+                _dlog("pipeline exceeded timeout, force-exiting")
+                os._exit(1)
             continue
         now = datetime.now().timestamp()
         closing = _closing["t"]
@@ -670,7 +717,7 @@ def dashboard():
 
 @app.route("/dashboard/send-report", methods=["POST"])
 def dashboard_send_report():
-    global _dash_running, _dash_done, _dash_error
+    global _dash_running, _dash_done, _dash_error, _dash_start_at
 
     body  = request.get_json(force=True) or {}
     email = (body.get("email") or "").strip()
@@ -684,9 +731,10 @@ def dashboard_send_report():
         if _dash_running:
             return jsonify({"error": "流程執行中，請稍候再試"}), 409
         _dash_logs.clear()
-        _dash_running = True
-        _dash_done    = False
-        _dash_error   = False
+        _dash_running  = True
+        _dash_done     = False
+        _dash_error    = False
+        _dash_start_at = time.time()
 
     threading.Thread(target=_dash_pipeline, args=(email, scope), daemon=True).start()
     return jsonify({"status": "started"})

@@ -6,6 +6,16 @@ from datetime import datetime, timezone
 from urllib.parse import urlparse, urlunparse
 
 _SALARY_RE = re.compile(r'\$\s*([\d,]+(?:\.\d+)?)\s*[-–]\s*\$\s*([\d,]+(?:\.\d+)?)')
+_STATE_RE  = re.compile(r'\s+[A-Z]{2,3}(?:\s+\d{4})?$')
+
+
+def _parse_city_from_location(location: str) -> str | None:
+    """Extract city name from 'Clayton VIC 3168' → 'Clayton', 'Perth WA' → 'Perth'."""
+    if not location:
+        return None
+    cleaned = _STATE_RE.sub('', location.strip()).strip()
+    return cleaned or None
+
 
 # Playwright is an optional dependency — import lazily so the rest of the
 # app continues to work even if it is not installed or the browser is missing.
@@ -67,7 +77,7 @@ def _scrape_page(page, city: str) -> list[dict]:
             "title":       title,
             "company":     company or None,
             "location":    location or city,
-            "city":        city,
+            "city":        _parse_city_from_location(location) or city,
             "description": snippet or None,
             "url":         raw_url or None,
             "salary_min":  salary_min,
