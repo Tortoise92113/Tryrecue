@@ -250,21 +250,19 @@ def _dash_pipeline(recipient_email: str, scope: str = "today") -> None:
         except Exception as exc:
             _dlog(f"⚠  分析失敗（不影響報告）: {exc}")
 
-        if scope == "all":
-            _dlog("🗄 讀取整個資料庫的 WHV 職缺...")
-            rows = storage.get_jobs(whv_only=True, limit=10000)
-            jobs = [dict(r) for r in rows]
-        else:
-            _dlog("🔍 讀取今天的 WHV 職缺清單...")
-            jobs = storage.get_todays_whv_jobs()
-        _dlog(f"✅ 共 {len(jobs)} 筆 WHV 友善職缺")
-
-        if not jobs:
-            _dlog("⚠  沒有 WHV 職缺資料（可能抓取失敗或全部被過濾）")
-
-        _dlog("📄 產生靜態 HTML 報告...")
-        html = generate_static_report(jobs)
-        _dlog(f"✅ 報告產生完成（{len(html):,} bytes）")
+        _dlog("📄 產生 GitHub Pages 報告並推送...")
+        try:
+            from pages_publisher import publish_today, PublishResult
+            pr: PublishResult = publish_today()
+            if pr.push_ok:
+                _dlog(f"✅ Pages 推送完成：{pr.today_count} 筆 WHV 職缺")
+                _dlog(f"   🔗 {pr.pages_url}")
+            else:
+                _dlog(f"⚠️  Pages 推送失敗（連結尚未更新）")
+                _dlog(f"   🔗 {pr.pages_url}")
+        except Exception as exc:
+            _dlog(f"⚠️  Pages 發布失敗（不影響寄信）: {exc}")
+            pr = None
 
         pdf_bytes = None
         if scope == "all":
@@ -274,10 +272,17 @@ def _dash_pipeline(recipient_email: str, scope: str = "today") -> None:
                     pdf_bytes = generate_pie_chart_report(conn)
                 _dlog(f"✅ PDF 產生完成（{len(pdf_bytes):,} bytes）")
             except Exception as exc:
-                _dlog(f"⚠  PDF 產生失敗（不影響 HTML 寄送）: {exc}")
+                _dlog(f"⚠  PDF 產生失敗（不影響寄信）: {exc}")
 
         _dlog(f"📧 寄送報告至 {recipient_email}...")
-        send_report_email(config, recipient_email, html, pdf_bytes=pdf_bytes)
+        send_report_email(
+            config, recipient_email,
+            pdf_bytes=pdf_bytes,
+            pages_url=pr.pages_url if pr else None,
+            push_ok=pr.push_ok if pr else False,
+            today_count=pr.today_count if pr else 0,
+            today_cities=pr.today_cities if pr else [],
+        )
         _dlog("✅ 寄信成功！")
         _dlog("════════ 全部完成 ════════")
 
