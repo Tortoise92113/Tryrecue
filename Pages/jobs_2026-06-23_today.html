@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<title>WHV 職缺報告 — 2026-06-23</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,Arial,sans-serif;color:#222;background:#f0f4f8}
+.hdr{background:#1a73e8;color:#fff;padding:20px 32px}
+.hdr h1{font-size:1.25rem}
+.hdr p{opacity:.8;font-size:.88rem;margin-top:4px}
+.wrap{max-width:980px;margin:24px auto;padding:0 14px}
+.bar{background:#fff;border-radius:8px;padding:14px 18px;margin-bottom:14px;
+     display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;
+     box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.bar label{font-size:.8rem;color:#666;display:block;margin-bottom:3px}
+select{padding:6px 10px;border:1px solid #ddd;border-radius:5px;font-size:.88rem;background:#fafafa}
+#badge{margin-left:auto;background:#e8f0fe;color:#1a73e8;
+       padding:3px 12px;border-radius:12px;font-size:.82rem;font-weight:700;align-self:center}
+.card{background:#fff;border-radius:8px;padding:14px 18px;margin-bottom:9px;
+      box-shadow:0 1px 3px rgba(0,0,0,.07);border-left:4px solid #1a73e8}
+.card.urg{border-left-color:#ea4335}
+.ttl{font-size:.97rem;font-weight:600}
+.ttl a{color:#1a73e8;text-decoration:none}
+.ttl a:hover{text-decoration:underline}
+.meta{font-size:.8rem;color:#666;margin-top:5px;display:flex;gap:9px;flex-wrap:wrap}
+.tag{background:#f0f4f8;border-radius:4px;padding:2px 7px}
+.sal{color:#34a853;font-weight:600}
+.note{font-size:.77rem;color:#999;margin-top:4px;font-style:italic}
+#none{text-align:center;padding:40px;color:#aaa;display:none}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <h1>&#x1F998; WHV 職缺報告</h1>
+  <p>2026-06-23 &nbsp;·&nbsp; 共 44 筆 WHV 友善職缺</p>
+</div>
+<div class="wrap">
+  <div class="bar">
+    <div><label>城市</label>
+      <select id="fc" onchange="render()">
+        <option value="">全部城市</option>
+        <option value="Alice Springs">Alice Springs</option>
+<option value="Bowen Hills">Bowen Hills</option>
+<option value="Brisbane">Brisbane</option>
+<option value="Broome">Broome</option>
+<option value="Cairns">Cairns</option>
+<option value="Darwin">Darwin</option>
+<option value="Melbourne">Melbourne</option>
+<option value="Milperra">Milperra</option>
+<option value="Perth">Perth</option>
+<option value="Sydney">Sydney</option>
+<option value="Townsville">Townsville</option>
+<option value="Villawood">Villawood</option>
+      </select>
+    </div>
+    <div><label>職缺類型</label>
+      <select id="ft" onchange="render()">
+        <option value="">全部類型</option>
+        <option value="farm">農場</option>
+<option value="hospitality">餐飲/服務</option>
+<option value="hotel">飯店/住宿</option>
+<option value="office">行政/辦公</option>
+<option value="other">其他</option>
+<option value="retail">零售</option>
+      </select>
+    </div>
+    <div><label>緊急程度</label>
+      <select id="fu" onchange="render()">
+        <option value="">全部</option>
+        <option value="normal">一般</option>
+        <option value="low">不急</option>
+        <option value="high">緊急</option>
+      </select>
+    </div>
+    <span id="badge"></span>
+  </div>
+  <div id="list"></div>
+  <div id="none">沒有符合條件的職缺</div>
+</div>
+<script>
+var J=[{"id": "adzuna_5759586258", "title": "Housing House Person", "company": "Voyages Indigenous Tourism Australia", "location": "Alice Springs, Alice Springs Area", "city": "Alice Springs", "job_type": "hotel", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5759586258?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 1, "classifier_note": "Suitable for WHV as it's onsite in a regional tourism role."}, {"id": "adzuna_5710705012", "title": "Concrete Agitator Truck Driver", "company": "Adbri", "location": "Alice Springs, Alice Springs Area", "city": "Alice Springs", "job_type": "other", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5710705012?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 1, "classifier_note": "Driver role, suitable for WHV holders."}, {"id": "adzuna_5750624217", "title": "Guest Activities and Tour Guide", "company": "Voyages Indigenous Tourism Australia", "location": "Alice Springs, Alice Springs Area", "city": "Alice Springs", "job_type": "other", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5750624217?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 1, "classifier_note": "Tour guide role in a regional tourist destination."}, {"id": "adzuna_5764364615", "title": "Recreation Officer", "company": "Voyages Indigenous Tourism Australia", "location": "Alice Springs, Alice Springs Area", "city": "Alice Springs", "job_type": "other", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5764364615?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 1, "classifier_note": "Suitable for backpackers seeking resort work."}, {"id": "adzuna_5772881399", "title": "Casual Retail/Warehouse Employees - MEGA CHOICE", "company": "Mai Wiru Regional Stores Council Aboriginal Corporation", "location": "Alice Springs, Alice Springs Area", "city": "Alice Springs", "job_type": "retail", "salary_min": 33.0, "salary_max": 33.0, "url": "https://www.adzuna.com.au/details/5772881399?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 1, "classifier_note": "Casual role, training provided, flexible hours."}, {"id": "jora_c1b38883d5c548ca138b7e0f25d4ba85", "title": "Supporter Services Team Member - Casual - QLD", "company": "Surf Life Saving Australia", "location": "Bowen Hills QLD", "city": "Bowen Hills", "job_type": "office", "salary_min": null, "salary_max": null, "url": "https://au.jora.com/job/Service-Team-Member-4482d0a003dbf719f806e4b3c2eb5e6d", "source": "jora", "urgency": "normal", "regional_area": 0, "classifier_note": "Casual role with customer service focus suitable for WHV."}, {"id": "adzuna_5716355453", "title": "Catering Assistant", "company": "Compass Group", "location": "East Brisbane, Brisbane", "city": "Brisbane", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5716355453?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 0, "classifier_note": "Catering assistant is a common backpacker role."}, {"id": "adzuna_5650828698", "title": "GUEST SERVICES ALL ROUNDER - YHA BRISBANE", "company": "YHA Australia", "location": "Brisbane CBD, Brisbane", "city": "Brisbane", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5650828698?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 0, "classifier_note": "Hostel job suitable for backpackers and short-term work."}, {"id": "adzuna_5772899612", "title": "Kitchen Hand", "company": "Green Leaves Early Learning", "location": "Richlands, Brisbane", "city": "Brisbane", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5772899612?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 0, "classifier_note": "Kitchen Hand role suitable for short-term/backpacker work."}, {"id": "adzuna_5772897170", "title": "Team Member - Cafe", "company": "Bunnings", "location": "Bald Hills, Brisbane", "city": "Brisbane", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5772897170?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 0, "classifier_note": "Cafe team member role suitable for short-term work."}, {"id": "adzuna_5772897040", "title": "Customer Service Team Member", "company": "Bunnings", "location": "Djugun, Broome", "city": "Broome", "job_type": "retail", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5772897040?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 1, "classifier_note": "Customer service roles are often suitable for WHV holders."}, {"id": "adzuna_5742787280", "title": "Crew - Outside school hours availability", "company": "Hungry Jacks", "location": "Manoora, Cairns", "city": "Cairns", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5742787280?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 1, "classifier_note": "Fast food roles are common for WHV holders."}, {"id": "adzuna_5768761890", "title": "Guest Service Agent", "company": "Crystalbrook Riley", "location": "Manoora, Cairns", "city": "Cairns", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5768761890?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 1, "classifier_note": "Guest service agent in hospitality is suitable for WHV."}, {"id": "adzuna_5742787245", "title": "Cleaning Assistant (Volunteer)", "company": "Frog Safe, Inc.", "location": "Manoora, Cairns", "city": "Cairns", "job_type": "other", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5742787245?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 1, "classifier_note": "Volunteer role suitable for short-term experience."}, {"id": "adzuna_5744955647", "title": "Retail Sales Assistant", "company": "Connor Clothing", "location": "Manoora, Cairns", "city": "Cairns", "job_type": "retail", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5744955647?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 1, "classifier_note": "Retail job suitable for short-term/casual work."}, {"id": "adzuna_5772898161", "title": "Warehouse Sales Assistant", "company": "Dulux Group", "location": "Bungalow, Cairns", "city": "Cairns", "job_type": "retail", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5772898161?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 1, "classifier_note": "Retail role in regional area, suitable for WHV."}, {"id": "adzuna_5769922061", "title": "Delivery Driver", "company": "Grey Nomads", "location": "Larrakeyah, Darwin", "city": "Darwin", "job_type": "farm", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5769922061?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 1, "classifier_note": "Delivery driver role on a farm, suitable for backpackers."}, {"id": "adzuna_5746790408", "title": "Cook", "company": "Delaware North, Australia and New Zealand", "location": "Larrakeyah, Darwin", "city": "Darwin", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5746790408?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 1, "classifier_note": "Casual role advertised on a job board, suitable for backpackers."}, {"id": "adzuna_5746790425", "title": "Kitchen Steward", "company": "Delaware North, Australia and New Zealand", "location": "Larrakeyah, Darwin", "city": "Darwin", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5746790425?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 1, "classifier_note": "Casual role in hospitality, ideal for backpackers."}, {"id": "adzuna_5743715428", "title": "Housekeeping Assistant Manager", "company": "Accor", "location": "Larrakeyah, Darwin", "city": "Darwin", "job_type": "hotel", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5743715428?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 1, "classifier_note": "Assistant manager role, but often available for short-term"}, {"id": "adzuna_5743715086", "title": "Delivery Driver", "company": "Coles Supermarkets", "location": "Larrakeyah, Darwin", "city": "Darwin", "job_type": "other", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5743715086?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 1, "classifier_note": "Delivery driver role is suitable for short-term work."}, {"id": "adzuna_5762723986", "title": "Warehouse and Receiving Assistant", "company": "Total Tools", "location": "Larrakeyah, Darwin", "city": "Darwin", "job_type": "other", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5762723986?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 1, "classifier_note": "Full-time role, but often accessible for backpackers."}, {"id": "adzuna_5743717353", "title": "CSA (Delivery Driver)", "company": "Coles Group", "location": "Larrakeyah, Darwin", "city": "Darwin", "job_type": "retail", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5743717353?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 1, "classifier_note": "Delivery driver role suitable for temporary work."}, {"id": "adzuna_5766563386", "title": "Guest Service Agent", "company": "Lancemore Crossley St Melbourne", "location": "Melbourne, Melbourne Region", "city": "Melbourne", "job_type": "hotel", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5766563386?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 0, "classifier_note": "Casual role in a hotel, suitable for short-term."}, {"id": "adzuna_4801325992", "title": "Remote Data Entry Clerk - Work at Home", "company": "TowardJobs", "location": "Melbourne, Melbourne Region", "city": "Melbourne", "job_type": "office", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/4801325992?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "high", "regional_area": 0, "classifier_note": "Work from home opportunity fits WHV holder criteria."}, {"id": "jora_427ac287af54df29654c40000fd33e80", "title": "Warehouse Assistant", "company": "888 Workforce", "location": "Milperra NSW", "city": "Milperra", "job_type": "other", "salary_min": 31.0, "salary_max": 31.0, "url": "https://au.jora.com/job/Warehouse-Assistant-51d61b5aa8ff9f61553a2c80921c6c7a", "source": "jora", "urgency": "normal", "regional_area": 0, "classifier_note": "Casual/temporary role suitable for backpackers."}, {"id": "adzuna_5757506828", "title": "Kitchen Staff", "company": "Thai restaurant", "location": "Perth CBD, Perth", "city": "Perth", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5757506828?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 0, "classifier_note": "Hospitality role suitable for short-term/casual work."}, {"id": "adzuna_5756710618", "title": "Waitstaff", "company": "Sentinel Bar and Grill", "location": "Perth CBD, Perth", "city": "Perth", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5756710618?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 0, "classifier_note": "Casual/temporary waitstaff role is ideal for WHV."}, {"id": "adzuna_5745125958", "title": "Waitstaff", "company": "The Blossom Chinese Restaurant", "location": "Perth CBD, Perth", "city": "Perth", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5745125958?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 0, "classifier_note": "Casual/temporary role suitable for WHV."}, {"id": "adzuna_5753404345", "title": "DoorDash Shopper - Be Your Own Boss", "company": "DoorDash", "location": "Perth CBD, Perth", "city": "Perth", "job_type": "other", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5753404345?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 0, "classifier_note": "Flexible work, suitable for short-term visa holders."}, {"id": "adzuna_5753404372", "title": "DoorDash Shopper - Become a Dasher", "company": "DoorDash", "location": "Perth CBD, Perth", "city": "Perth", "job_type": "other", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5753404372?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 0, "classifier_note": "Gig economy role, suitable for short-term work."}, {"id": "adzuna_5762722970", "title": "DoorDash Shopper - Sign Up in Minutes", "company": "Doordash", "location": "Perth CBD, Perth", "city": "Perth", "job_type": "other", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5762722970?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 0, "classifier_note": "Delivery work often suitable for WHV holders."}, {"id": "adzuna_5773046798", "title": "Cafe All Rounder", "company": "Curated Wealth Pty", "location": "The Rocks, Sydney", "city": "Sydney", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5773046798?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 0, "classifier_note": "Casual position suitable for short-term work."}, {"id": "adzuna_5772423570", "title": "Casual Functions and Bistro Waitstaff - Strathfield Golf Club", "company": "The Fresh Collective", "location": "Sydney CBD, Sydney", "city": "Sydney", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5772423570?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 0, "classifier_note": "Casual waitstaff role, suitable for WHV holders."}, {"id": "adzuna_5772423573", "title": "Casual Waitstaff - The Wharf Restaurant & Bar", "company": "The Fresh Collective", "location": "Sydney CBD, Sydney", "city": "Sydney", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5772423573?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 0, "classifier_note": "Casual waitstaff is typical backpacker work."}, {"id": "adzuna_5772423571", "title": "Section Waitstaff - MOD Dining - Art Gallery NSW", "company": "The Fresh Collective", "location": "Sydney CBD, Sydney", "city": "Sydney", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5772423571?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 0, "classifier_note": "Casual waitstaff suitable for backpackers on WHV."}, {"id": "adzuna_5764254433", "title": "Team Members", "company": "Zambrero", "location": "Elizabeth Bay, Sydney", "city": "Sydney", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5764254433?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 0, "classifier_note": "Standard hospitality role suitable for WHV holders."}, {"id": "adzuna_5772411386", "title": "Trade Waiters - The Morrison", "company": "InRecruit", "location": "Sydney, Sydney Region", "city": "Sydney", "job_type": "hospitality", "salary_min": 75000.0, "salary_max": 85000.0, "url": "https://www.adzuna.com.au/details/5772411386?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 0, "classifier_note": "Hospitality role suitable for short-term work."}, {"id": "adzuna_5772423569", "title": "Waitstaff - Crafted by Matt Moran Restaurant at AGNSW", "company": "The Fresh Collective", "location": "Sydney CBD, Sydney", "city": "Sydney", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5772423569?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 0, "classifier_note": "Casual waitstaff role suitable for short-term employment."}, {"id": "adzuna_5772626523", "title": "Front Desk All Rounder", "company": "SOFITEL", "location": "The Rocks, Sydney", "city": "Sydney", "job_type": "hotel", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5772626523?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 0, "classifier_note": "Front desk role in a major hotel."}, {"id": "adzuna_5764749565", "title": "Cleaning / Domestic Assistance", "company": "Newly by HealthcareLink Support", "location": "Rowes Bay, Townsville", "city": "Townsville", "job_type": "other", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5764749565?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 1, "classifier_note": "Live-in role with accommodation offered."}, {"id": "adzuna_5768635343", "title": "Team Member", "company": "Coles Supermarkets", "location": "North Ward, Townsville", "city": "Townsville", "job_type": "retail", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5768635343?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 1, "classifier_note": "Retail roles common for backpackers."}, {"id": "adzuna_5768842652", "title": "Team Member - Castletown Liquorland", "company": "Coles Group", "location": "North Ward, Townsville", "city": "Townsville", "job_type": "retail", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5768842652?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 1, "classifier_note": "Retail role in a regional area, suitable for WHV."}, {"id": "jora_3a917ea35a03b2c63a8518e09424429f", "title": "Picker Packer", "company": "People2U", "location": "Villawood NSW", "city": "Villawood", "job_type": "farm", "salary_min": 32.0, "salary_max": 32.0, "url": "https://au.jora.com/job/Picker-Packer-b029e3bdc5de393f505793b8d761e226", "source": "jora", "urgency": "normal", "regional_area": 0, "classifier_note": "Suitable for short-term work experience."}];
+var L={"hospitality": "餐飲/服務", "hotel": "飯店/住宿", "office": "行政/辦公", "retail": "零售", "farm": "農場", "other": "其他", "unknown": "未分類"};
+function sal(a,b){
+  if(!a&&!b)return'';
+  if(a&&b)return'$'+Math.round(a)+'–$'+Math.round(b)+'/yr';
+  if(a)return'$'+Math.round(a)+'+ /yr';
+  return'up to $'+Math.round(b)+'/yr';
+}
+function render(){
+  var city=document.getElementById('fc').value;
+  var type=document.getElementById('ft').value;
+  var urg=document.getElementById('fu').value;
+  var f=J.filter(function(j){
+    if(city&&j.city!==city)return false;
+    if(type&&j.job_type!==type)return false;
+    if(urg&&j.urgency!==urg)return false;
+    return true;
+  });
+  document.getElementById('badge').textContent=f.length+' 筆';
+  var list=document.getElementById('list');
+  if(!f.length){list.innerHTML='';document.getElementById('none').style.display='';return;}
+  document.getElementById('none').style.display='none';
+  list.innerHTML=f.map(function(j){
+    var s=sal(j.salary_min,j.salary_max);
+    var tl=L[j.job_type]||j.job_type;
+    var reg=j.regional_area===1?'🌿 偏遠':'';
+    var uu=j.urgency==='high'?'🔴 緊急':'';
+    var th=j.url?'<a href="'+j.url+'" target="_blank">'+j.title+'</a>':j.title;
+    return'<div class="card'+(j.urgency==='high'?' urg':'')+'">'+
+      '<div class="ttl">'+th+'</div>'+
+      '<div class="meta">'+
+        '<span>'+(j.company||'—')+'</span>'+
+        '<span>'+(j.location||j.city)+'</span>'+
+        (s?'<span class="sal">'+s+'</span>':'')+
+        '<span class="tag">'+tl+'</span>'+
+        '<span class="tag">'+j.source+'</span>'+
+        (reg?'<span class="tag">'+reg+'</span>':'')+
+        (uu?'<span class="tag">'+uu+'</span>':'')+
+      '</div>'+
+      (j.classifier_note?'<div class="note">'+j.classifier_note+'</div>':'')+
+    '</div>';
+  }).join('');
+}
+render();
+</script>
+</body>
+</html>
