@@ -101,7 +101,22 @@ def run(config: dict | None = None):
     except Exception as exc:
         _log.warning("analysis failed: %s", exc)
 
-    # ── 4. Notify ─────────────────────────────────────────────────────────
+    # ── 4. Publish GitHub Pages report ────────────────────────────────────
+    _log.info("publishing GitHub Pages report…")
+    try:
+        from pages_publisher import publish_today
+        result = publish_today()
+        _log.info(
+            "pages: today=%d %s | all=%d %s  (push_ok=%s)",
+            result.today_count, result.today_url,
+            result.all_count, result.all_url, result.push_ok,
+        )
+        if not result.push_ok:
+            _log.warning("git push failed — Pages link may not be updated yet")
+    except Exception as exc:
+        _log.warning("pages publish failed (non-fatal): %s", exc)
+
+    # ── 5. Notify ─────────────────────────────────────────────────────────
     _log.info("sending update notification…")
     try:
         send_update_notification(config, source_errors=source_errors or None)
