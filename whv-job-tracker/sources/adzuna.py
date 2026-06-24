@@ -10,6 +10,13 @@ BASE_URL = "https://api.adzuna.com/v1/api/jobs/au/search/{page}"
 
 _logger = logging.getLogger("adzuna")
 
+_APP_KEY_RE = re.compile(r'(app_key=)[^&\s]+')
+
+
+def _mask_key(text: str) -> str:
+    """Replace app_key value in URLs with *** to prevent API key leakage in logs."""
+    return _APP_KEY_RE.sub(r'\1***', text)
+
 
 def _job_id(raw: dict) -> str:
     return "adzuna_" + raw.get("id", hashlib.md5(raw.get("redirect_url", "").encode()).hexdigest())
@@ -81,7 +88,7 @@ def fetch(config: dict) -> list[dict]:
                     resp = _fetch_with_retry(BASE_URL.format(page=page), params)
                     data = resp.json()
                 except requests.RequestException as exc:
-                    _logger.warning("[adzuna] request error (%r, %r, p%d): %s", city, keyword, page, exc)
+                    _logger.warning("[adzuna] request error (%r, %r, p%d): %s", city, keyword, page, _mask_key(str(exc)))
                     query_failed = True
                     break
 
