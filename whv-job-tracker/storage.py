@@ -436,12 +436,198 @@ def get_all_whv_jobs() -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def backfill_jora_city() -> int:
-    """Re-derive city from location text for active Jora jobs.
+_SUBURB_TO_CITY: dict[str, str] = {
+    # Sydney metro
+    "City of Sydney": "Sydney", "Concord": "Sydney", "Villawood": "Sydney",
+    "Milperra": "Sydney", "Parramatta": "Sydney", "Blacktown": "Sydney",
+    "Liverpool": "Sydney", "Bankstown": "Sydney", "Fairfield": "Sydney",
+    "Campbelltown": "Sydney", "Penrith": "Sydney", "Auburn": "Sydney",
+    "Hurstville": "Sydney", "Rockdale": "Sydney", "Sutherland": "Sydney",
+    "Cronulla": "Sydney", "Miranda": "Sydney", "Chatswood": "Sydney",
+    "Hornsby": "Sydney", "Ryde": "Sydney", "Manly": "Sydney",
+    "Bondi": "Sydney", "Randwick": "Sydney", "Marrickville": "Sydney",
+    "Burwood": "Sydney", "Strathfield": "Sydney", "Ashfield": "Sydney",
+    "Leichhardt": "Sydney", "Newtown": "Sydney", "Redfern": "Sydney",
+    "Surry Hills": "Sydney", "Pyrmont": "Sydney", "Rozelle": "Sydney",
+    "Balmain": "Sydney", "Drummoyne": "Sydney", "Five Dock": "Sydney",
+    "Homebush": "Sydney", "Lidcombe": "Sydney", "Granville": "Sydney",
+    "Merrylands": "Sydney", "Guildford": "Sydney", "Wentworthville": "Sydney",
+    "Seven Hills": "Sydney", "Toongabbie": "Sydney", "Kings Langley": "Sydney",
+    "Wetherill Park": "Sydney", "Smithfield": "Sydney", "Cabramatta": "Sydney",
+    "Canley Vale": "Sydney", "Bonnyrigg": "Sydney", "Moorebank": "Sydney",
+    "Casula": "Sydney", "Prestons": "Sydney", "Edmondson Park": "Sydney",
+    "Ingleburn": "Sydney", "Minto": "Sydney", "Leumeah": "Sydney",
+    "Narellan": "Sydney", "Camden": "Sydney", "Macquarie Park": "Sydney",
+    "North Ryde": "Sydney", "Meadowbank": "Sydney", "Rhodes": "Sydney",
+    "Lane Cove": "Sydney", "Artarmon": "Sydney", "St Leonards": "Sydney",
+    "Crows Nest": "Sydney", "North Sydney": "Sydney", "Neutral Bay": "Sydney",
+    "Mosman": "Sydney", "Cremorne": "Sydney", "Kirrawee": "Sydney",
+    "Engadine": "Sydney", "Menai": "Sydney", "Caringbah": "Sydney",
 
-    Historical records had city set to the search query parameter (e.g. "Perth")
-    instead of the actual job location. Reads location, strips trailing state
-    abbreviation and postcode, writes the remainder back as city.
+    # Melbourne metro
+    "Derrimut": "Melbourne", "Lilydale": "Melbourne", "Carlton": "Melbourne",
+    "Footscray": "Melbourne", "Dandenong": "Melbourne", "Frankston": "Melbourne",
+    "Ringwood": "Melbourne", "Box Hill": "Melbourne", "Doncaster": "Melbourne",
+    "Werribee": "Melbourne", "Sunshine": "Melbourne", "Broadmeadows": "Melbourne",
+    "Thomastown": "Melbourne", "Preston": "Melbourne", "Brunswick": "Melbourne",
+    "Fitzroy": "Melbourne", "Richmond": "Melbourne", "St Kilda": "Melbourne",
+    "Prahran": "Melbourne", "Oakleigh": "Melbourne", "Clayton": "Melbourne",
+    "Springvale": "Melbourne", "Cheltenham": "Melbourne", "Moorabbin": "Melbourne",
+    "Bentleigh": "Melbourne", "Mooroolbark": "Melbourne", "Croydon": "Melbourne",
+    "Bayswater": "Melbourne", "Ferntree Gully": "Melbourne", "Knox": "Melbourne",
+    "Boronia": "Melbourne", "Wantirna": "Melbourne", "Rowville": "Melbourne",
+    "Scoresby": "Melbourne", "Knoxfield": "Melbourne", "Narre Warren": "Melbourne",
+    "Berwick": "Melbourne", "Cranbourne": "Melbourne", "Pakenham": "Melbourne",
+    "Hallam": "Melbourne", "Hampton Park": "Melbourne", "Fountain Gate": "Melbourne",
+    "Epping": "Melbourne", "Lalor": "Melbourne", "Mill Park": "Melbourne",
+    "South Morang": "Melbourne", "Bundoora": "Melbourne", "Greensborough": "Melbourne",
+    "Watsonia": "Melbourne", "Eltham": "Melbourne", "Diamond Creek": "Melbourne",
+    "Reservoir": "Melbourne", "Northcote": "Melbourne", "Thornbury": "Melbourne",
+    "Coburg": "Melbourne", "Pascoe Vale": "Melbourne", "Glenroy": "Melbourne",
+    "Fawkner": "Melbourne", "Campbellfield": "Melbourne", "Somerton": "Melbourne",
+    "Tullamarine": "Melbourne", "Airport West": "Melbourne", "Essendon": "Melbourne",
+    "Moonee Ponds": "Melbourne", "Ascot Vale": "Melbourne", "Flemington": "Melbourne",
+    "Kensington": "Melbourne", "West Melbourne": "Melbourne", "Port Melbourne": "Melbourne",
+    "South Melbourne": "Melbourne", "Albert Park": "Melbourne", "Middle Park": "Melbourne",
+    "South Yarra": "Melbourne", "Toorak": "Melbourne", "Armadale": "Melbourne",
+    "Malvern": "Melbourne", "Glen Waverley": "Melbourne", "Mount Waverley": "Melbourne",
+    "Nunawading": "Melbourne", "Mitcham": "Melbourne", "Vermont": "Melbourne",
+    "Chirnside Park": "Melbourne", "Healesville": "Melbourne",
+
+    # Brisbane metro
+    "South Brisbane": "Brisbane", "Bowen Hills": "Brisbane", "Heathwood": "Brisbane",
+    "Underwood": "Brisbane", "Thornlands": "Brisbane", "Cleveland": "Brisbane",
+    "Chermside": "Brisbane", "Carindale": "Brisbane", "Indooroopilly": "Brisbane",
+    "Toowong": "Brisbane", "Nundah": "Brisbane", "Wynnum": "Brisbane",
+    "Stafford": "Brisbane", "Aspley": "Brisbane", "Strathpine": "Brisbane",
+    "Springwood": "Brisbane", "Slacks Creek": "Brisbane", "Richlands": "Brisbane",
+    "Acacia Ridge": "Brisbane", "Eight Mile Plains": "Brisbane",
+    "Fortitude Valley": "Brisbane", "West End": "Brisbane", "New Farm": "Brisbane",
+    "Newstead": "Brisbane", "Teneriffe": "Brisbane", "Albion": "Brisbane",
+    "Woolloongabba": "Brisbane", "Greenslopes": "Brisbane", "Holland Park": "Brisbane",
+    "Mount Gravatt": "Brisbane", "Mansfield": "Brisbane", "Rochedale": "Brisbane",
+    "Sunnybank": "Brisbane", "Moorooka": "Brisbane", "Yeronga": "Brisbane",
+    "Rocklea": "Brisbane", "Archerfield": "Brisbane", "Coopers Plains": "Brisbane",
+    "Salisbury": "Brisbane", "Nathan": "Brisbane", "Tarragindi": "Brisbane",
+    "Annerley": "Brisbane", "Fairfield": "Brisbane", "Yeronga": "Brisbane",
+    "Chelmer": "Brisbane", "Sherwood": "Brisbane", "Graceville": "Brisbane",
+    "Corinda": "Brisbane", "Oxley": "Brisbane", "Darra": "Brisbane",
+    "Wacol": "Brisbane", "Inala": "Brisbane", "Forest Lake": "Brisbane",
+    "Durack": "Brisbane", "Doolandella": "Brisbane", "Pallara": "Brisbane",
+    "Willawong": "Brisbane", "Larapinta": "Brisbane", "Algester": "Brisbane",
+    "Calamvale": "Brisbane", "Parkinson": "Brisbane", "Robertson": "Brisbane",
+    "Runcorn": "Brisbane", "Kuraby": "Brisbane", "Drewvale": "Brisbane",
+    "Stretton": "Brisbane", "Macgregor": "Brisbane", "Upper Mount Gravatt": "Brisbane",
+    "Wishart": "Brisbane", "Mackenzie": "Brisbane", "Belmont": "Brisbane",
+    "Tingalpa": "Brisbane", "Hemmant": "Brisbane", "Lytton": "Brisbane",
+    "Pinkenba": "Brisbane", "Eagle Farm": "Brisbane", "Northgate": "Brisbane",
+    "Banyo": "Brisbane", "Nudgee": "Brisbane", "Geebung": "Brisbane",
+    "Zillmere": "Brisbane", "Boondall": "Brisbane", "Taigum": "Brisbane",
+    "Fitzgibbon": "Brisbane", "Bracken Ridge": "Brisbane", "Bald Hills": "Brisbane",
+    "Sandgate": "Brisbane", "Brighton": "Brisbane", "Deagon": "Brisbane",
+    "Shorncliffe": "Brisbane", "Clontarf": "Brisbane", "Redcliffe": "Brisbane",
+    "Woody Point": "Brisbane", "Scarborough": "Brisbane",
+
+    # Gold Coast
+    "Nerang": "Gold Coast", "Southport": "Gold Coast", "Surfers Paradise": "Gold Coast",
+    "Broadbeach": "Gold Coast", "Robina": "Gold Coast", "Coomera": "Gold Coast",
+    "Helensvale": "Gold Coast", "Labrador": "Gold Coast", "Runaway Bay": "Gold Coast",
+    "Bundall": "Gold Coast", "Ashmore": "Gold Coast", "Molendinar": "Gold Coast",
+    "Arundel": "Gold Coast", "Parkwood": "Gold Coast", "Carrara": "Gold Coast",
+    "Merrimac": "Gold Coast", "Varsity Lakes": "Gold Coast", "Mudgeeraba": "Gold Coast",
+    "Tallai": "Gold Coast", "Worongary": "Gold Coast", "Highland Park": "Gold Coast",
+    "Bonogin": "Gold Coast", "Mudgeeraba": "Gold Coast", "Reedy Creek": "Gold Coast",
+    "Burleigh Heads": "Gold Coast", "Burleigh Waters": "Gold Coast",
+    "Elanora": "Gold Coast", "Palm Beach": "Gold Coast", "Currumbin": "Gold Coast",
+    "Tugun": "Gold Coast", "Coolangatta": "Gold Coast", "Bilinga": "Gold Coast",
+    "Tweed Heads": "Gold Coast",
+
+    # Perth metro
+    "Kenwick": "Perth", "Joondalup": "Perth", "Fremantle": "Perth",
+    "Rockingham": "Perth", "Midland": "Perth", "Cannington": "Perth",
+    "Morley": "Perth", "Osborne Park": "Perth", "Malaga": "Perth",
+    "Balcatta": "Perth", "Victoria Park": "Perth", "Subiaco": "Perth",
+    "Claremont": "Perth", "Cottesloe": "Perth", "Stirling": "Perth",
+    "Innaloo": "Perth", "Karrinyup": "Perth", "Scarborough": "Perth",
+    "Nollamara": "Perth", "Westminster": "Perth", "Mirrabooka": "Perth",
+    "Girrawheen": "Perth", "Koondoola": "Perth", "Wanneroo": "Perth",
+    "Wangara": "Perth", "Landsdale": "Perth", "Darch": "Perth",
+    "Madeley": "Perth", "Hocking": "Perth", "Quinns Rocks": "Perth",
+    "Clarkson": "Perth", "Butler": "Perth", "Yanchep": "Perth",
+    "Kwinana": "Perth", "Baldivis": "Perth", "Mandurah": "Perth",
+    "Spearwood": "Perth", "Cockburn Central": "Perth", "Success": "Perth",
+    "Bibra Lake": "Perth", "Yangebup": "Perth", "Hamilton Hill": "Perth",
+    "Henderson": "Perth", "Coogee": "Perth", "Munster": "Perth",
+    "O'Connor": "Perth", "Beaconsfield": "Perth", "White Gum Valley": "Perth",
+    "Hilton": "Perth", "Palmyra": "Perth", "Melville": "Perth",
+    "Willetton": "Perth", "Murdoch": "Perth", "Bull Creek": "Perth",
+    "Leeming": "Perth", "Winthrop": "Perth", "Kardinya": "Perth",
+    "Booragoon": "Perth", "Applecross": "Perth", "Mount Pleasant": "Perth",
+    "Ardross": "Perth", "Dalkeith": "Perth", "Nedlands": "Perth",
+    "Crawley": "Perth", "Shenton Park": "Perth", "Floreat": "Perth",
+    "City Beach": "Perth", "Wembley": "Perth", "Joondanna": "Perth",
+    "Mount Hawthorn": "Perth", "Leederville": "Perth", "North Perth": "Perth",
+    "Mount Lawley": "Perth", "Inglewood": "Perth", "Bedford": "Perth",
+    "Dianella": "Perth", "Embleton": "Perth", "Bayswater": "Perth",
+    "Bassendean": "Perth", "Guildford": "Perth", "Swan Valley": "Perth",
+    "High Wycombe": "Perth", "Forrestfield": "Perth", "Kalamunda": "Perth",
+    "Gosnells": "Perth", "Maddington": "Perth", "Thornlie": "Perth",
+    "Southern River": "Perth", "Canning Vale": "Perth", "Harrisdale": "Perth",
+    "Piara Waters": "Perth", "Atwell": "Perth", "Aubin Grove": "Perth",
+    "Hammond Park": "Perth", "Banjup": "Perth", "Jandakot": "Perth",
+
+    # Adelaide metro
+    "Elizabeth": "Adelaide", "Salisbury": "Adelaide", "Tea Tree Gully": "Adelaide",
+    "Modbury": "Adelaide", "Glenelg": "Adelaide", "Marion": "Adelaide",
+    "Noarlunga": "Adelaide", "Morphett Vale": "Adelaide", "Christies Beach": "Adelaide",
+    "Reynella": "Adelaide", "Hackham": "Adelaide", "Onkaparinga Hills": "Adelaide",
+    "Mawson Lakes": "Adelaide", "Parafield": "Adelaide", "Salisbury East": "Adelaide",
+    "Ingle Farm": "Adelaide", "Para Hills": "Adelaide", "Pooraka": "Adelaide",
+    "Gepps Cross": "Adelaide", "Wingfield": "Adelaide", "Mansfield Park": "Adelaide",
+    "Kilburn": "Adelaide", "Enfield": "Adelaide", "Blair Athol": "Adelaide",
+    "Northfield": "Adelaide", "Valley View": "Adelaide", "Ridgehaven": "Adelaide",
+    "Hope Valley": "Adelaide", "Banksia Park": "Adelaide", "Golden Grove": "Adelaide",
+    "Greenwith": "Adelaide", "One Tree Hill": "Adelaide",
+
+    # Cairns
+    "Woree": "Cairns", "Earlville": "Cairns", "Manunda": "Cairns",
+    "Westcourt": "Cairns", "Parramatta Park": "Cairns", "Cairns North": "Cairns",
+    "Portsmith": "Cairns", "Stratford": "Cairns", "Smithfield": "Cairns",
+    "Caravonica": "Cairns", "Freshwater": "Cairns", "Redlynch": "Cairns",
+    "Brinsmead": "Cairns", "Kewarra Beach": "Cairns", "Trinity Beach": "Cairns",
+    "Trinity Park": "Cairns", "Yorkeys Knob": "Cairns",
+
+    # Central Coast (NSW)
+    "Tuggerah": "Central Coast", "Gosford": "Central Coast", "Wyong": "Central Coast",
+    "Terrigal": "Central Coast", "The Entrance": "Central Coast",
+    "Bateau Bay": "Central Coast", "Erina": "Central Coast",
+    "Mingara": "Central Coast", "Toukley": "Central Coast",
+    "Lake Haven": "Central Coast",
+
+    # Newcastle (NSW)
+    "Charlestown": "Newcastle", "Kotara": "Newcastle", "Gateshead": "Newcastle",
+    "Jesmond": "Newcastle", "Wallsend": "Newcastle", "Broadmeadow": "Newcastle",
+    "Mayfield": "Newcastle", "Hamilton": "Newcastle", "Waratah": "Newcastle",
+    "Adamstown": "Newcastle", "Merewether": "Newcastle", "Islington": "Newcastle",
+
+    # Sunshine Coast
+    "Maroochydore": "Sunshine Coast", "Caloundra": "Sunshine Coast",
+    "Noosa Heads": "Sunshine Coast", "Kawana Waters": "Sunshine Coast",
+    "Nambour": "Sunshine Coast", "Buderim": "Sunshine Coast",
+    "Sippy Downs": "Sunshine Coast", "Mooloolaba": "Sunshine Coast",
+    "Kawana": "Sunshine Coast", "Bokarina": "Sunshine Coast",
+    "Birtinya": "Sunshine Coast", "Warana": "Sunshine Coast",
+    "Currimundi": "Sunshine Coast", "Aroha": "Sunshine Coast",
+    "Mountain Creek": "Sunshine Coast", "Kuluin": "Sunshine Coast",
+    "Kunda Park": "Sunshine Coast", "Chevallum": "Sunshine Coast",
+}
+
+
+def backfill_jora_city() -> int:
+    """Re-derive and normalise city from location text for active Jora jobs.
+
+    Strips state abbreviation and postcode, then maps known suburbs to their
+    parent major city (e.g. "Villawood NSW 2163" → "Sydney").
     """
     import re
     _state_re = re.compile(r'\s+[A-Z]{2,3}(?:\s+\d{4})?$')
@@ -449,8 +635,10 @@ def backfill_jora_city() -> int:
     def _parse(location: str | None) -> str | None:
         if not location:
             return None
-        cleaned = _state_re.sub('', location.strip()).strip()
-        return cleaned or None
+        suburb = _state_re.sub('', location.strip()).strip()
+        if not suburb:
+            return None
+        return _SUBURB_TO_CITY.get(suburb, suburb)
 
     with get_conn() as conn:
         rows = conn.execute(

@@ -65,6 +65,8 @@ def run(config: dict | None = None):
     inserted = storage.upsert_jobs(all_jobs)
     _log.info("inserted %d new jobs (%d total fetched)", inserted, len(all_jobs))
 
+    storage.backfill_jora_city()
+
     presence = storage.update_job_presence({j["id"] for j in all_jobs})
     _log.info(
         "=== job presence — revived: %d | newly delisted: %d ===",
