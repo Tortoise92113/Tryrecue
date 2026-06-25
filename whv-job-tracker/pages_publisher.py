@@ -124,14 +124,19 @@ def _push_direct(
 ) -> bool:
     """Add, commit, and push when already on the main branch.
 
-    Files are already written/deleted on disk; git add -A Pages/ picks up
-    all new, modified, and deleted files under Pages/ in one shot.
+    New/updated files are picked up by git add -A Pages/; old all-jobs files
+    are staged for deletion via git rm --cached (local copies are kept).
     """
-    for cmd, label in [
-        (["git", "add", "-A", "Pages/"],    "git add"),
+    cmds: list[tuple[list[str], str]] = [
+        (["git", "add", "-A", "Pages/"], "git add"),
+    ]
+    for rel in files_to_delete:
+        cmds.append((["git", "rm", "--cached", "--ignore-unmatch", rel], "git rm"))
+    cmds += [
         (["git", "commit", "-m", commit_msg], "git commit"),
         (["git", "push", "origin", "main"],   "git push"),
-    ]:
+    ]
+    for cmd, label in cmds:
         r = _run(cmd, cwd=_REPO_ROOT, timeout=60)
         if r.returncode != 0:
             out = r.stdout + r.stderr
@@ -193,14 +198,13 @@ def publish_today() -> PublishResult:
         today_fname, len(today_jobs), all_fname, len(all_jobs),
     )
 
-    # Delete previous day's all-jobs files (no _today suffix, different date)
+    # Stage previous day's all-jobs files for remote deletion (local copies kept)
     old_rels: list[str] = []
     for p in _PAGES_DIR.glob("jobs_*.html"):
         m = _ALL_FNAME_RE.match(p.name)
         if m and m.group(1) != today:
             old_rels.append(f"Pages/{p.name}")
-            p.unlink()
-            _log.info("deleted old all-jobs file: %s", p.name)
+            _log.info("queuing old all-jobs file for remote deletion: %s", p.name)
 
     today_count  = len(today_jobs)
     all_count    = len(all_jobs)
