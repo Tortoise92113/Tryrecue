@@ -54,6 +54,12 @@ def _fetch_with_retry(url: str, params: dict, max_retries: int = 3, base_delay: 
                     time.sleep(base_delay * (attempt + 1))
                     continue
             raise
+        except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError) as exc:
+            last_exc = exc
+            if attempt < max_retries - 1:
+                time.sleep(base_delay * (attempt + 1))
+                continue
+            raise
     raise last_exc
 
 
