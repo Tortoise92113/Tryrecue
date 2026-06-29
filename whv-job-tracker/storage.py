@@ -576,7 +576,14 @@ _SUBURB_TO_CITY: dict[str, str] = {
     "Piara Waters": "Perth", "Atwell": "Perth", "Aubin Grove": "Perth",
     "Hammond Park": "Perth", "Banjup": "Perth", "Jandakot": "Perth",
 
+    # Canberra
+    "Manuka": "Canberra", "Barton": "Canberra", "Deakin": "Canberra",
+    "Fyshwick": "Canberra", "Woden": "Canberra", "Belconnen": "Canberra",
+    "Tuggeranong": "Canberra", "Gungahlin": "Canberra", "Braddon": "Canberra",
+    "Civic": "Canberra", "Bruce": "Canberra", "Phillip": "Canberra",
+
     # Adelaide metro
+    "Para Vista": "Adelaide",
     "Elizabeth": "Adelaide", "Salisbury": "Adelaide", "Tea Tree Gully": "Adelaide",
     "Modbury": "Adelaide", "Glenelg": "Adelaide", "Marion": "Adelaide",
     "Noarlunga": "Adelaide", "Morphett Vale": "Adelaide", "Christies Beach": "Adelaide",
