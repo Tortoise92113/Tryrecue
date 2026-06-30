@@ -26,7 +26,7 @@ try:
 except ImportError:
     _PLAYWRIGHT_AVAILABLE = False
 
-BASE_URL = "https://au.jora.com/jobs"
+BASE_URL = "https://au.jora.com/j"
 
 
 def _strip_tracking(url: str) -> str:
@@ -44,10 +44,7 @@ def _job_id(url: str, title: str, company: str) -> str:
 
 def _scrape_page(page, city: str) -> list[dict]:
     jobs = []
-    cards = page.query_selector_all("article.job-card, [data-testid='job-card'], .job-result")
-    if not cards:
-        # fallback: try generic result containers
-        cards = page.query_selector_all("[class*='job'][class*='card'], [class*='result']")
+    cards = page.query_selector_all("div.job-card")
 
     for card in cards:
         title   = (el_text(card, "h2 a, h3 a, [data-testid='job-title'], .job-title a")
@@ -139,7 +136,7 @@ def fetch(config: dict) -> list[dict]:
                         fetched += len(jobs)
 
                         # Check if a "next page" link exists
-                        next_btn = page.query_selector("a[aria-label='Next'], a[data-testid='next-page'], .pagination-next a")
+                        next_btn = page.query_selector("a.next-page-button")
                         if not next_btn:
                             break
 
