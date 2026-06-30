@@ -50,6 +50,7 @@ def fetch_cross_table(jobs_conn: sqlite3.Connection) -> tuple[list[tuple], int]:
         SELECT city, job_type, COUNT(*) as count
         FROM jobs
         WHERE city IS NOT NULL
+          AND is_whv_friendly = 1
           AND is_deleted = 0 AND delisted_at IS NULL
         GROUP BY city, job_type
         ORDER BY city, count DESC
@@ -58,7 +59,8 @@ def fetch_cross_table(jobs_conn: sqlite3.Connection) -> tuple[list[tuple], int]:
 
     cur.execute(
         "SELECT COUNT(*) FROM jobs"
-        " WHERE city IS NOT NULL AND is_deleted = 0 AND delisted_at IS NULL"
+        " WHERE city IS NOT NULL AND is_whv_friendly = 1"
+        " AND is_deleted = 0 AND delisted_at IS NULL"
     )
     total = cur.fetchone()[0]
     return rows, total
