@@ -11,6 +11,9 @@ from pathlib import Path
 
 from storage import ANALYTICS_DB, DB_PATH as JOBS_DB, UNCLASSIFIED_JOB_TYPE
 
+_MIN_CITY_JOBS    = 10
+_OTHER_REGION_KEY = "其他地區"
+
 LABEL_MAP = {
     "hospitality": "餐飲/服務",
     "hotel": "飯店/住宿",
@@ -88,6 +91,18 @@ def run_analysis() -> None:
     jobs_conn.close()
 
     data, city_totals = compute_stats(rows)
+
+    # Merge cities below threshold into 其他地區.
+    # The small city name is stored as the job_type so the frontend can display it.
+    small = {c: city_totals[c] for c in list(city_totals) if city_totals[c] < _MIN_CITY_JOBS}
+    if small:
+        for c in small:
+            del data[c]
+            del city_totals[c]
+        other_total = sum(small.values())
+        data[_OTHER_REGION_KEY] = dict(sorted(small.items(), key=lambda x: -x[1]))
+        city_totals[_OTHER_REGION_KEY] = other_total
+
     run_at = datetime.now(timezone.utc).isoformat()
 
     cur = analytics_conn.cursor()

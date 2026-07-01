@@ -15,7 +15,7 @@ from flask import Flask, jsonify, render_template, request
 import storage
 from config import load_config
 from filters import pre_filter
-from storage import ANALYTICS_DB, UNCLASSIFIED_JOB_TYPE
+from storage import ANALYTICS_DB, UNCLASSIFIED_JOB_TYPE, OTHER_REGION_KEY, MIN_CITY_JOBS
 
 _config_cache: dict | None = None
 _file_log_attached = False
@@ -510,7 +510,18 @@ def api_analysis_jobs(job_type: str, city: str):
 @app.route("/")
 def index():
     config = _get_config()
-    cities = config["search"]["cities"]
+    with storage.get_conn() as conn:
+        rows = conn.execute("""
+            SELECT city, COUNT(*) AS cnt
+            FROM jobs
+            WHERE city IS NOT NULL AND is_whv_friendly = 1
+              AND is_deleted = 0 AND delisted_at IS NULL
+            GROUP BY city
+            ORDER BY cnt DESC
+        """).fetchall()
+    cities = [r["city"] for r in rows if r["cnt"] >= MIN_CITY_JOBS]
+    if any(r["cnt"] < MIN_CITY_JOBS for r in rows):
+        cities.append(OTHER_REGION_KEY)
     return render_template("index.html", cities=cities, user_name=config.get("user_name", ""))
 
 

@@ -264,6 +264,14 @@ const TYPE_COLORS = {
 };
 const DEFAULT_COLOR = '#64C8E8';
 
+// Sequential palette for 其他地區 (city-name slices)
+const OTHER_PALETTE = [
+  '#4A90D9','#5BC8A0','#F4A742','#E8637A','#A78BDB',
+  '#F7D154','#64C8E8','#8EC96A','#F0916A','#7BC4C4',
+  '#D4A0E0','#B5C452','#E88C5A','#6BAED6','#74C476',
+  '#FD8D3C','#9E9AC8','#BCBD22','#17BECF','#AEC7E8',
+];
+
 const TYPE_LABELS = {
   hospitality: '餐飲/服務',
   hotel:       '飯店/住宿',
@@ -353,12 +361,19 @@ async function renderChart(city) {
   document.getElementById('city-subtitle').textContent =
     dateRes.date ? `資料截至 ${formatDate(dateRes.date)}` : '尚無資料';
 
-  // 對映 job_type → label
-  const slices = chartRows.map(r => ({
-    type: r.job_type ?? 'unknown',
-    label: TYPE_LABELS[r.job_type] ?? r.job_type ?? '未分類',
+  const isOtherRegion = (city === '其他地區');
+
+  // 對映 job_type → label / color
+  const slices = chartRows.map((r, i) => ({
+    type:  r.job_type ?? 'unknown',
+    label: isOtherRegion
+             ? (r.job_type ?? '未知')                               // city name as label
+             : (TYPE_LABELS[r.job_type] ?? r.job_type ?? '未分類'),
     count: r.count,
     pct:   r.percentage,
+    color: isOtherRegion
+             ? OTHER_PALETTE[i % OTHER_PALETTE.length]
+             : (TYPE_COLORS[r.job_type] ?? DEFAULT_COLOR),
   }));
 
   // 圖表
@@ -371,7 +386,7 @@ async function renderChart(city) {
       labels: slices.map(s => s.label),
       datasets: [{
         data: slices.map(s => s.count),
-        backgroundColor: slices.map(s => TYPE_COLORS[s.type] ?? DEFAULT_COLOR),
+        backgroundColor: slices.map(s => s.color),
         borderColor: '#ffffff',
         borderWidth: 2,
         hoverOffset: 16,
@@ -383,13 +398,13 @@ async function renderChart(city) {
       cutout: '60%',
       animation: { duration: 350, easing: 'easeInOutQuart' },
       onClick(evt, elements) {
-        if (!elements.length) return;
+        if (!elements.length || isOtherRegion) return;
         const s = slices[elements[0].index];
         window.location.href =
           `/analysis/jobs/${encodeURIComponent(s.type)}/${encodeURIComponent(activeCity)}`;
       },
       onHover(evt, elements) {
-        evt.native.target.style.cursor = elements.length ? 'pointer' : 'default';
+        evt.native.target.style.cursor = (elements.length && !isOtherRegion) ? 'pointer' : 'default';
       },
       plugins: {
         legend: { display: false },
@@ -413,8 +428,7 @@ async function renderChart(city) {
   // 圖例
   document.getElementById('legend-wrap').innerHTML = slices.map(s => `
     <div class="legend-row">
-      <span class="legend-swatch"
-            style="background:${TYPE_COLORS[s.type] ?? DEFAULT_COLOR}"></span>
+      <span class="legend-swatch" style="background:${s.color}"></span>
       <span class="legend-label">${escHtml(s.label)}</span>
       <span class="legend-count">${s.count} 筆</span>
       <span class="legend-pct">${s.pct.toFixed(1)}%</span>
