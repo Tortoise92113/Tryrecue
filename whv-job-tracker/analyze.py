@@ -13,6 +13,8 @@ from storage import ANALYTICS_DB, DB_PATH as JOBS_DB, UNCLASSIFIED_JOB_TYPE
 
 _MIN_CITY_JOBS    = 10
 _OTHER_REGION_KEY = "Others"
+_MIN_OTHER_CITY_JOBS = 3   # within "Others", cities below this get merged into "Other Cities"
+_OTHER_CITIES_KEY    = "Other Cities"
 
 LABEL_MAP = {
     "hospitality": "餐飲/服務",
@@ -92,15 +94,23 @@ def run_analysis() -> None:
 
     data, city_totals = compute_stats(rows)
 
-    # Merge cities below threshold into 其他地區.
+    # Merge cities below threshold into Others.
     # The small city name is stored as the job_type so the frontend can display it.
     small = {c: city_totals[c] for c in list(city_totals) if city_totals[c] < _MIN_CITY_JOBS}
     if small:
         for c in small:
             del data[c]
             del city_totals[c]
+
+        # Within Others, further merge very small cities (1-2 jobs) into a
+        # single "Other Cities" slice so the pie chart isn't too fragmented.
+        tiny = {c: cnt for c, cnt in small.items() if cnt < _MIN_OTHER_CITY_JOBS}
+        kept = {c: cnt for c, cnt in small.items() if cnt >= _MIN_OTHER_CITY_JOBS}
+        if tiny:
+            kept[_OTHER_CITIES_KEY] = sum(tiny.values())
+
         other_total = sum(small.values())
-        data[_OTHER_REGION_KEY] = dict(sorted(small.items(), key=lambda x: -x[1]))
+        data[_OTHER_REGION_KEY] = dict(sorted(kept.items(), key=lambda x: -x[1]))
         city_totals[_OTHER_REGION_KEY] = other_total
 
     run_at = datetime.now(timezone.utc).isoformat()
