@@ -542,8 +542,8 @@ def api_analysis_cities():
             FROM analysis_snapshots
             WHERE run_id = ?
             GROUP BY city
-            ORDER BY total DESC
-        """, (run_id,)).fetchall()
+            ORDER BY (city = ?), total DESC
+        """, (run_id, OTHER_REGION_KEY)).fetchall()
         return jsonify([{"city": r["city"], "total": r["total"]} for r in rows])
     finally:
         conn.close()
