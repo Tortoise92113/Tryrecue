@@ -264,7 +264,7 @@ const TYPE_COLORS = {
 };
 const DEFAULT_COLOR = '#64C8E8';
 
-// Sequential palette for 其他地區 (city-name slices)
+// Sequential palette for Others (city-name slices)
 const OTHER_PALETTE = [
   '#4A90D9','#5BC8A0','#F4A742','#E8637A','#A78BDB',
   '#F7D154','#64C8E8','#8EC96A','#F0916A','#7BC4C4',
@@ -361,7 +361,7 @@ async function renderChart(city) {
   document.getElementById('city-subtitle').textContent =
     dateRes.date ? `資料截至 ${formatDate(dateRes.date)}` : '尚無資料';
 
-  const isOtherRegion = (city === '其他地區');
+  const isOtherRegion = (city === 'Others');
 
   // 對映 job_type → label / color
   const slices = chartRows.map((r, i) => ({
