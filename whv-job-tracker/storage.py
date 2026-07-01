@@ -7,6 +7,8 @@ ANALYTICS_DB = Path(__file__).parent / "analytics.db"
 UNCLASSIFIED_JOB_TYPE = "unknown"
 OTHER_REGION_KEY = "Others"
 MIN_CITY_JOBS    = 10
+OTHER_CITIES_KEY     = "Other Cities"
+MIN_OTHER_CITY_JOBS  = 3
 
 SCHEMA = """
 PRAGMA journal_mode=WAL;

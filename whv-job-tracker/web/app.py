@@ -15,7 +15,10 @@ from flask import Flask, jsonify, render_template, request
 import storage
 from config import load_config
 from filters import pre_filter
-from storage import ANALYTICS_DB, UNCLASSIFIED_JOB_TYPE, OTHER_REGION_KEY, MIN_CITY_JOBS
+from storage import (
+    ANALYTICS_DB, UNCLASSIFIED_JOB_TYPE, OTHER_REGION_KEY, MIN_CITY_JOBS,
+    OTHER_CITIES_KEY, MIN_OTHER_CITY_JOBS,
+)
 
 _config_cache: dict | None = None
 _file_log_attached = False
@@ -483,22 +486,44 @@ def analysis_jobs_page(job_type: str, city: str):
 
 @app.route("/api/analysis/jobs/<job_type>/<path:city>")
 def api_analysis_jobs(job_type: str, city: str):
-    with storage.get_conn() as conn:
-        if job_type == UNCLASSIFIED_JOB_TYPE:
-            rows = conn.execute("""
-                SELECT id, title, company, location, salary_min, salary_max,
+    cols = """id, title, company, location, salary_min, salary_max,
                        url, is_whv_friendly, regional_area, source, posted_at,
-                       is_favorite
+                       is_favorite"""
+    with storage.get_conn() as conn:
+        if city == OTHER_REGION_KEY:
+            # Under the "Others" slice, job_type is really a city name (or the
+            # "Other Cities" aggregate of very small cities) — not a job category.
+            if job_type == OTHER_CITIES_KEY:
+                rows = conn.execute(f"""
+                    SELECT {cols}
+                    FROM jobs
+                    WHERE is_deleted = 0 AND delisted_at IS NULL
+                      AND city IN (
+                          SELECT city FROM jobs
+                          WHERE city IS NOT NULL AND is_whv_friendly = 1
+                            AND is_deleted = 0 AND delisted_at IS NULL
+                          GROUP BY city HAVING COUNT(*) < ?
+                      )
+                    ORDER BY posted_at DESC
+                """, (MIN_OTHER_CITY_JOBS,)).fetchall()
+            else:
+                rows = conn.execute(f"""
+                    SELECT {cols}
+                    FROM jobs
+                    WHERE city = ? AND is_deleted = 0 AND delisted_at IS NULL
+                    ORDER BY posted_at DESC
+                """, (job_type,)).fetchall()
+        elif job_type == UNCLASSIFIED_JOB_TYPE:
+            rows = conn.execute(f"""
+                SELECT {cols}
                 FROM jobs
                 WHERE city = ? AND job_type IS NULL
                   AND is_deleted = 0 AND delisted_at IS NULL
                 ORDER BY posted_at DESC
             """, (city,)).fetchall()
         else:
-            rows = conn.execute("""
-                SELECT id, title, company, location, salary_min, salary_max,
-                       url, is_whv_friendly, regional_area, source, posted_at,
-                       is_favorite
+            rows = conn.execute(f"""
+                SELECT {cols}
                 FROM jobs
                 WHERE city = ? AND job_type = ?
                   AND is_deleted = 0 AND delisted_at IS NULL
