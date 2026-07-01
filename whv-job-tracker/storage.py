@@ -5,7 +5,7 @@ from pathlib import Path
 DB_PATH      = Path(__file__).parent / "jobs.db"
 ANALYTICS_DB = Path(__file__).parent / "analytics.db"
 UNCLASSIFIED_JOB_TYPE = "unknown"
-OTHER_REGION_KEY = "其他地區"
+OTHER_REGION_KEY = "Others"
 MIN_CITY_JOBS    = 10
 
 SCHEMA = """

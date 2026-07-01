@@ -12,7 +12,7 @@ from pathlib import Path
 from storage import ANALYTICS_DB, DB_PATH as JOBS_DB, UNCLASSIFIED_JOB_TYPE
 
 _MIN_CITY_JOBS    = 10
-_OTHER_REGION_KEY = "其他地區"
+_OTHER_REGION_KEY = "Others"
 
 LABEL_MAP = {
     "hospitality": "餐飲/服務",
