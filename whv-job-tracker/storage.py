@@ -5,6 +5,8 @@ from pathlib import Path
 DB_PATH      = Path(__file__).parent / "jobs.db"
 ANALYTICS_DB = Path(__file__).parent / "analytics.db"
 UNCLASSIFIED_JOB_TYPE = "unknown"
+OTHER_REGION_KEY = "其他地區"
+MIN_CITY_JOBS    = 10
 
 SCHEMA = """
 PRAGMA journal_mode=WAL;
@@ -246,7 +248,15 @@ def _build_jobs_where(
     regional_area: int = None,
 ) -> tuple[list, dict]:
     clauses, params = ["j.is_deleted = 0", "j.delisted_at IS NULL"], {}
-    if city:
+    if city == OTHER_REGION_KEY:
+        clauses.append("""j.city IN (
+            SELECT city FROM jobs
+            WHERE city IS NOT NULL AND is_whv_friendly = 1
+              AND is_deleted = 0 AND delisted_at IS NULL
+            GROUP BY city HAVING COUNT(*) < :other_min
+        )""")
+        params["other_min"] = MIN_CITY_JOBS
+    elif city:
         clauses.append("j.city = :city")
         params["city"] = city
     if whv_only:
@@ -603,6 +613,10 @@ _SUBURB_TO_CITY: dict[str, str] = {
     "Caravonica": "Cairns", "Freshwater": "Cairns", "Redlynch": "Cairns",
     "Brinsmead": "Cairns", "Kewarra Beach": "Cairns", "Trinity Beach": "Cairns",
     "Trinity Park": "Cairns", "Yorkeys Knob": "Cairns",
+    "Cairns City": "Cairns", "Edge Hill": "Cairns", "Bungalow": "Cairns",
+    "Edmonton": "Cairns", "Bentley Park": "Cairns", "Manoora": "Cairns",
+    "Mount Sheridan": "Cairns", "Gordonvale": "Cairns", "Whitfield": "Cairns",
+    "Palm Cove": "Cairns", "Atherton": "Cairns",
 
     # Central Coast (NSW)
     "Tuggerah": "Central Coast", "Gosford": "Central Coast", "Wyong": "Central Coast",
@@ -616,6 +630,26 @@ _SUBURB_TO_CITY: dict[str, str] = {
     "Jesmond": "Newcastle", "Wallsend": "Newcastle", "Broadmeadow": "Newcastle",
     "Mayfield": "Newcastle", "Hamilton": "Newcastle", "Waratah": "Newcastle",
     "Adamstown": "Newcastle", "Merewether": "Newcastle", "Islington": "Newcastle",
+
+    # Townsville metro
+    "Aitkenvale": "Townsville", "Kirwan": "Townsville", "South Townsville": "Townsville",
+    "Pimlico": "Townsville", "Thuringowa Central": "Townsville", "Mundingburra": "Townsville",
+    "Bohle": "Townsville", "Idalia": "Townsville", "Deeragun": "Townsville",
+    "Douglas": "Townsville", "Garbutt": "Townsville", "Townsville City": "Townsville",
+    "Nelly Bay": "Townsville",
+
+    # Darwin metro (NT)
+    "Casuarina": "Darwin", "Winnellie": "Darwin", "Fannie Bay": "Darwin",
+    "Parap": "Darwin", "Rapid Creek": "Darwin", "Stuart Park": "Darwin",
+    "Tiwi": "Darwin", "Palmerston": "Darwin", "Holtze": "Darwin",
+    "Berrimah": "Darwin", "Bakewell": "Darwin", "Coonawarra": "Darwin",
+    "Litchfield": "Darwin", "Berrimah": "Darwin",
+
+    # Broome
+    "Cable Beach": "Broome", "Djugun": "Broome",
+
+    # Sydney metro (additional)
+    "Sydney CBD": "Sydney",
 
     # Sunshine Coast
     "Maroochydore": "Sunshine Coast", "Caloundra": "Sunshine Coast",
