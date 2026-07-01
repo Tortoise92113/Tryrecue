@@ -9,12 +9,11 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-from storage import ANALYTICS_DB, DB_PATH as JOBS_DB, UNCLASSIFIED_JOB_TYPE
-
-_MIN_CITY_JOBS    = 10
-_OTHER_REGION_KEY = "Others"
-_MIN_OTHER_CITY_JOBS = 3   # within "Others", cities below this get merged into "Other Cities"
-_OTHER_CITIES_KEY    = "Other Cities"
+from storage import (
+    ANALYTICS_DB, DB_PATH as JOBS_DB, UNCLASSIFIED_JOB_TYPE,
+    OTHER_REGION_KEY as _OTHER_REGION_KEY, MIN_CITY_JOBS as _MIN_CITY_JOBS,
+    OTHER_CITIES_KEY as _OTHER_CITIES_KEY, MIN_OTHER_CITY_JOBS as _MIN_OTHER_CITY_JOBS,
+)
 
 LABEL_MAP = {
     "hospitality": "餐飲/服務",

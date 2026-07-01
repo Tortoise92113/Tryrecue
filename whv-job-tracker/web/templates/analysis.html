@@ -398,13 +398,13 @@ async function renderChart(city) {
       cutout: '60%',
       animation: { duration: 350, easing: 'easeInOutQuart' },
       onClick(evt, elements) {
-        if (!elements.length || isOtherRegion) return;
+        if (!elements.length) return;
         const s = slices[elements[0].index];
         window.location.href =
           `/analysis/jobs/${encodeURIComponent(s.type)}/${encodeURIComponent(activeCity)}`;
       },
       onHover(evt, elements) {
-        evt.native.target.style.cursor = (elements.length && !isOtherRegion) ? 'pointer' : 'default';
+        evt.native.target.style.cursor = elements.length ? 'pointer' : 'default';
       },
       plugins: {
         legend: { display: false },
