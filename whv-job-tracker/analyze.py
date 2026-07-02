@@ -9,6 +9,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
+from config import load_config
 from storage import (
     ANALYTICS_DB, DB_PATH as JOBS_DB, UNCLASSIFIED_JOB_TYPE,
     OTHER_REGION_KEY as _OTHER_REGION_KEY, MIN_CITY_JOBS as _MIN_CITY_JOBS,
@@ -45,27 +46,32 @@ def init_analytics_db(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def fetch_cross_table(jobs_conn: sqlite3.Connection) -> tuple[list[tuple], int]:
+def fetch_cross_table(jobs_conn: sqlite3.Connection, exclude_urgent: bool = False) -> tuple[list[tuple], int]:
     cur = jobs_conn.cursor()
     # Count only in-stock jobs (not deleted / not delisted) so the pie chart
     # matches the drill-down list and the homepage. Otherwise stale deleted /
     # delisted jobs inflate the chart and a slice can be empty when clicked.
-    cur.execute("""
+    # Also apply exclude_urgent (config.filters.exclude_urgent) so the total
+    # matches the homepage's grand_total badge, which excludes urgent jobs.
+    urgent_clause = "AND (urgency IS NULL OR urgency != 'high')" if exclude_urgent else ""
+    cur.execute(f"""
         SELECT city, job_type, COUNT(*) as count
         FROM jobs
         WHERE city IS NOT NULL
           AND is_whv_friendly = 1
           AND is_deleted = 0 AND delisted_at IS NULL
+          {urgent_clause}
         GROUP BY city, job_type
         ORDER BY city, count DESC
     """)
     rows = cur.fetchall()
 
-    cur.execute(
-        "SELECT COUNT(*) FROM jobs"
-        " WHERE city IS NOT NULL AND is_whv_friendly = 1"
-        " AND is_deleted = 0 AND delisted_at IS NULL"
-    )
+    cur.execute(f"""
+        SELECT COUNT(*) FROM jobs
+        WHERE city IS NOT NULL AND is_whv_friendly = 1
+          AND is_deleted = 0 AND delisted_at IS NULL
+          {urgent_clause}
+    """)
     total = cur.fetchone()[0]
     return rows, total
 
@@ -84,11 +90,13 @@ def compute_stats(rows: list[tuple]) -> tuple[dict, dict]:
 
 
 def run_analysis() -> None:
+    exclude_urgent = load_config().get("filters", {}).get("exclude_urgent", False)
+
     jobs_conn = sqlite3.connect(JOBS_DB)
     analytics_conn = sqlite3.connect(ANALYTICS_DB)
     init_analytics_db(analytics_conn)
 
-    rows, total = fetch_cross_table(jobs_conn)
+    rows, total = fetch_cross_table(jobs_conn, exclude_urgent=exclude_urgent)
     jobs_conn.close()
 
     data, city_totals = compute_stats(rows)
