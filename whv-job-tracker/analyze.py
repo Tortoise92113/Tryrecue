@@ -11,7 +11,7 @@ from pathlib import Path
 
 from config import load_config
 from storage import (
-    ANALYTICS_DB, DB_PATH as JOBS_DB, UNCLASSIFIED_JOB_TYPE,
+    ANALYTICS_DB, DB_PATH as JOBS_DB, UNCLASSIFIED_JOB_TYPE, visible_job_clause,
     OTHER_REGION_KEY as _OTHER_REGION_KEY, MIN_CITY_JOBS as _MIN_CITY_JOBS,
     OTHER_CITIES_KEY as _OTHER_CITIES_KEY, MIN_OTHER_CITY_JOBS as _MIN_OTHER_CITY_JOBS,
 )
@@ -51,27 +51,19 @@ def fetch_cross_table(jobs_conn: sqlite3.Connection, exclude_urgent: bool = Fals
     # Count only in-stock jobs (not deleted / not delisted) so the pie chart
     # matches the drill-down list and the homepage. Otherwise stale deleted /
     # delisted jobs inflate the chart and a slice can be empty when clicked.
-    # Also apply exclude_urgent (config.filters.exclude_urgent) so the total
-    # matches the homepage's grand_total badge, which excludes urgent jobs.
-    urgent_clause = "AND (urgency IS NULL OR urgency != 'high')" if exclude_urgent else ""
+    # Shares its WHERE fragment with storage._build_jobs_where's OTHER_REGION_KEY
+    # subquery so the two "how many jobs does this city have" answers agree.
+    where = visible_job_clause(exclude_urgent)
     cur.execute(f"""
         SELECT city, job_type, COUNT(*) as count
         FROM jobs
-        WHERE city IS NOT NULL
-          AND is_whv_friendly = 1
-          AND is_deleted = 0 AND delisted_at IS NULL
-          {urgent_clause}
+        WHERE {where}
         GROUP BY city, job_type
         ORDER BY city, count DESC
     """)
     rows = cur.fetchall()
 
-    cur.execute(f"""
-        SELECT COUNT(*) FROM jobs
-        WHERE city IS NOT NULL AND is_whv_friendly = 1
-          AND is_deleted = 0 AND delisted_at IS NULL
-          {urgent_clause}
-    """)
+    cur.execute(f"SELECT COUNT(*) FROM jobs WHERE {where}")
     total = cur.fetchone()[0]
     return rows, total
 

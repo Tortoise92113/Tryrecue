@@ -5,16 +5,19 @@ import time
 from datetime import datetime, timezone
 from urllib.parse import urlparse, urlunparse
 
+from storage import _LOCATION_STATE_RE
+
 _SALARY_RE = re.compile(r'\$\s*([\d,]+(?:\.\d+)?)\s*[-–]\s*\$\s*([\d,]+(?:\.\d+)?)')
-_STATE_RE  = re.compile(r'\s+[A-Z]{2,3}(?:\s+\d{4})?$')
 
 
 def _parse_city_from_location(location: str) -> str | None:
     """Extract city name from 'Clayton VIC 3168' → 'Clayton', 'Perth WA' → 'Perth'."""
     if not location:
         return None
-    cleaned = _STATE_RE.sub('', location.strip()).strip()
-    return cleaned or None
+    cleaned = location.strip()
+    m = _LOCATION_STATE_RE.match(cleaned)
+    suburb = m.group(1).strip() if m else cleaned
+    return suburb or None
 
 
 # Playwright is an optional dependency — import lazily so the rest of the
