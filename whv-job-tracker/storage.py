@@ -244,6 +244,17 @@ def set_user_state(job_id: str, state: str, note: str = None):
         conn.execute(sql, {"job_id": job_id, "state": state, "note": note, "updated_at": now})
 
 
+def _urgent_exclude_clause(prefix: str = "") -> str:
+    """SQL fragment excluding urgent jobs. `prefix` is an optional column
+    qualifier (e.g. "j.") for queries that alias the jobs table — the two
+    current callers need different qualification (visible_job_clause runs
+    against an unaliased subquery, _build_jobs_where's outer clause runs
+    against "jobs j"), so this is a single source of truth for the
+    predicate itself while still letting each call site supply its prefix.
+    """
+    return f"({prefix}urgency IS NULL OR {prefix}urgency != 'high')"
+
+
 def visible_job_clause(exclude_urgent: bool = False) -> str:
     """SQL WHERE fragment for a job counting toward a city's visible total.
 
@@ -254,7 +265,7 @@ def visible_job_clause(exclude_urgent: bool = False) -> str:
     semantics (whv_only + exclude_urgent) that the pie chart total is
     expected to agree with.
     """
-    urgent_clause = " AND (urgency IS NULL OR urgency != 'high')" if exclude_urgent else ""
+    urgent_clause = f" AND {_urgent_exclude_clause()}" if exclude_urgent else ""
     return (
         "city IS NOT NULL AND is_whv_friendly = 1"
         " AND is_deleted = 0 AND delisted_at IS NULL" + urgent_clause
@@ -284,7 +295,7 @@ def _build_jobs_where(
         clauses.append("COALESCE(s.state, 'new') = :state")
         params["state"] = state_filter
     if exclude_urgent:
-        clauses.append("(j.urgency IS NULL OR j.urgency != 'high')")
+        clauses.append(_urgent_exclude_clause("j."))
     if job_types:
         placeholders = ",".join(f":jt{i}" for i in range(len(job_types)))
         clauses.append(f"j.job_type IN ({placeholders})")
