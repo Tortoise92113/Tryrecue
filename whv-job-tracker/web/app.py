@@ -17,7 +17,7 @@ from config import load_config
 from filters import pre_filter
 from storage import (
     ANALYTICS_DB, UNCLASSIFIED_JOB_TYPE, OTHER_REGION_KEY, MIN_CITY_JOBS,
-    OTHER_CITIES_KEY, MIN_OTHER_CITY_JOBS,
+    OTHER_CITIES_KEY, MIN_OTHER_CITY_JOBS, visible_job_clause,
 )
 
 _config_cache: dict | None = None
@@ -501,28 +501,35 @@ def api_analysis_jobs(job_type: str, city: str):
     cols = """id, title, company, location, salary_min, salary_max,
                        url, is_whv_friendly, regional_area, source, posted_at,
                        is_favorite"""
+    exclude_urgent = _get_config().get("filters", {}).get("exclude_urgent", False)
     with storage.get_conn() as conn:
         if city == OTHER_REGION_KEY:
             # Under the "Others" slice, job_type is really a city name (or the
             # "Other Cities" aggregate of very small cities) — not a job category.
             if job_type == OTHER_CITIES_KEY:
+                # Same visible_job_clause(exclude_urgent) predicate — on both
+                # the outer row filter AND the city-eligibility subquery — as
+                # analyze.fetch_cross_table, so this drill-down list agrees
+                # with the "Other Cities" pie slice the user just clicked.
                 rows = conn.execute(f"""
                     SELECT {cols}
                     FROM jobs
-                    WHERE is_deleted = 0 AND delisted_at IS NULL
+                    WHERE {visible_job_clause(exclude_urgent)}
                       AND city IN (
                           SELECT city FROM jobs
-                          WHERE city IS NOT NULL AND is_whv_friendly = 1
-                            AND is_deleted = 0 AND delisted_at IS NULL
+                          WHERE {visible_job_clause(exclude_urgent)}
                           GROUP BY city HAVING COUNT(*) < ?
                       )
                     ORDER BY posted_at DESC
                 """, (MIN_OTHER_CITY_JOBS,)).fetchall()
             else:
+                # Same visible_job_clause(exclude_urgent) predicate as the
+                # pie chart's own tally, so this individual small-city
+                # slice's drill-down count agrees with the slice clicked.
                 rows = conn.execute(f"""
                     SELECT {cols}
                     FROM jobs
-                    WHERE city = ? AND is_deleted = 0 AND delisted_at IS NULL
+                    WHERE city = ? AND {visible_job_clause(exclude_urgent)}
                     ORDER BY posted_at DESC
                 """, (job_type,)).fetchall()
         elif job_type == UNCLASSIFIED_JOB_TYPE:
@@ -547,12 +554,12 @@ def api_analysis_jobs(job_type: str, city: str):
 @app.route("/")
 def index():
     config = _get_config()
+    exclude_urgent = config.get("filters", {}).get("exclude_urgent", False)
     with storage.get_conn() as conn:
-        rows = conn.execute("""
+        rows = conn.execute(f"""
             SELECT city, COUNT(*) AS cnt
             FROM jobs
-            WHERE city IS NOT NULL AND is_whv_friendly = 1
-              AND is_deleted = 0 AND delisted_at IS NULL
+            WHERE {visible_job_clause(exclude_urgent)}
             GROUP BY city
             ORDER BY cnt DESC
         """).fetchall()

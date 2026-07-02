@@ -3,21 +3,40 @@ import re
 import sys
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 
-from storage import _LOCATION_STATE_RE
+# Allow this module to be imported/run standalone (e.g. `python -c "import
+# jora"` from sources/) without depending on the caller (main.py, web/app.py)
+# having already put the project root on sys.path.
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
+from storage import _LOCATION_STATE_RE, _SUBURB_TO_CITY
 
 _SALARY_RE = re.compile(r'\$\s*([\d,]+(?:\.\d+)?)\s*[-–]\s*\$\s*([\d,]+(?:\.\d+)?)')
 
 
 def _parse_city_from_location(location: str) -> str | None:
-    """Extract city name from 'Clayton VIC 3168' → 'Clayton', 'Perth WA' → 'Perth'."""
+    """Extract city name from 'Clayton VIC 3168' → 'Clayton', 'Perth WA' → 'Perth'.
+
+    Resolves known suburb+state pairs to their parent major city (e.g.
+    "Villawood NSW" → "Sydney") using the same _SUBURB_TO_CITY mapping and
+    key format as storage.backfill_jora_city(), so this fetch-time value
+    already agrees with what backfill would compute rather than discarding
+    the parsed state and returning a bare, possibly ambiguous suburb name.
+    """
     if not location:
         return None
     cleaned = location.strip()
     m = _LOCATION_STATE_RE.match(cleaned)
-    suburb = m.group(1).strip() if m else cleaned
-    return suburb or None
+    if not m:
+        return cleaned or None
+    suburb, state = m.group(1).strip(), m.group(2)
+    if not suburb:
+        return None
+    return _SUBURB_TO_CITY.get(f"{suburb}, {state}", suburb)
 
 
 # Playwright is an optional dependency — import lazily so the rest of the
