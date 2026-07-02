@@ -282,9 +282,21 @@ def _dash_pipeline(recipient_email: str, scope: str = "today") -> None:
         # scope="all" → full-report link; scope="today" → today-only link
         report_url = (pr.all_url if scope == "all" else pr.today_url) if pr else None
 
+        html_content = ""
+        if not report_url:
+            # Pages link unavailable (publish failed or URL couldn't be derived) —
+            # fall back to attaching a real static report instead of an empty file.
+            _dlog("  → Pages 連結無法使用，改用附件夾帶完整職缺清單")
+            fallback_jobs = (
+                [dict(r) for r in storage.get_jobs(whv_only=True, limit=10000)]
+                if scope == "all" else storage.get_todays_whv_jobs()
+            )
+            html_content = generate_static_report(fallback_jobs)
+
         _dlog(f"📧 寄送報告至 {recipient_email}...")
         send_report_email(
             config, recipient_email,
+            html_content=html_content,
             pdf_bytes=pdf_bytes,
             pages_url=report_url,
             push_ok=pr.push_ok if pr else False,
