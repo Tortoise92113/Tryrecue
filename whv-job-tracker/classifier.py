@@ -10,9 +10,9 @@ import threading
 from google import genai
 
 MAX_RETRIES = 5
-SEMAPHORE_LIMIT = int(os.getenv("GEMINI_CONCURRENCY", "4"))
-_RAMP_INITIAL = 1     # concurrent requests at cold start
-_RAMP_SECONDS = 20.0  # seconds to ramp from _RAMP_INITIAL to SEMAPHORE_LIMIT
+SEMAPHORE_LIMIT = int(os.getenv("GEMINI_CONCURRENCY", "6"))  # ceiling for adaptive concurrency
+_MIN_CONCURRENCY = 2          # floor — never throttle below this even under sustained 503s
+_SUCCESS_STREAK_TARGET = 20   # consecutive clean (non-503) calls before concurrency ramps back up
 _GEMINI_API_HOST = "generativelanguage.googleapis.com"
 _DNS_CHECK_TIMEOUT_SECONDS = float(os.getenv("GEMINI_DNS_CHECK_TIMEOUT", "5"))
 
@@ -202,18 +202,80 @@ def _strip_markdown_fence(text: str) -> str:
     return text
 
 
-async def _ramp_up(semaphore: asyncio.Semaphore, initial: int, target: int, ramp_seconds: float) -> None:
-    """Gradually release semaphore slots from initial to target over ramp_seconds."""
-    steps = target - initial
-    if steps <= 0:
-        return
-    delay = ramp_seconds / steps
-    for _ in range(steps):
-        await asyncio.sleep(delay)
-        semaphore.release()
+class AdaptiveSemaphore:
+    """Concurrency limiter that shrinks on 503s and grows back after a streak
+    of clean calls.
+
+    asyncio.Semaphore's internal counter can only grow via release() — there
+    is no public API to shrink it — so a plain Semaphore can't model "reduce
+    concurrency" once requests are already in flight. This tracks its own
+    count of in-flight slots (_in_use) against a mutable ceiling (_limit),
+    gating acquire() through an asyncio.Condition so admission checks and
+    limit changes share one lock: acquire() blocks on the condition until
+    _in_use < _limit, release() decrements _in_use and wakes waiters,
+    on_503()/on_success() adjust _limit under the same lock. This avoids
+    both races (limit changed mid-check) and deadlock (waiters are always
+    re-woken whenever _in_use or _limit could have changed).
+    """
+
+    def __init__(self, initial: int, min_limit: int, max_limit: int):
+        self._limit = initial
+        self._min_limit = min_limit
+        self._max_limit = max_limit
+        self._in_use = 0
+        self._success_streak = 0
+        self._condition = asyncio.Condition()
+
+    @property
+    def limit(self) -> int:
+        return self._limit
+
+    async def acquire(self) -> None:
+        async with self._condition:
+            await self._condition.wait_for(lambda: self._in_use < self._limit)
+            self._in_use += 1
+
+    async def release(self) -> None:
+        async with self._condition:
+            self._in_use -= 1
+            self._condition.notify_all()
+
+    async def on_503(self) -> None:
+        """Call after a 503/UNAVAILABLE response: reset the success streak
+        and back off concurrency by one, down to _min_limit."""
+        async with self._condition:
+            self._success_streak = 0
+            if self._limit > self._min_limit:
+                old = self._limit
+                self._limit -= 1
+                _logger.warning(
+                    "adaptive concurrency: %d -> %d (503 detected)", old, self._limit
+                )
+
+    async def on_success(self) -> None:
+        """Call after a clean (non-503) response: count toward the streak
+        needed to ramp concurrency back up, up to _max_limit."""
+        async with self._condition:
+            self._success_streak += 1
+            if self._success_streak >= _SUCCESS_STREAK_TARGET and self._limit < self._max_limit:
+                old = self._limit
+                self._limit += 1
+                self._success_streak = 0
+                _logger.info(
+                    "adaptive concurrency: %d -> %d (%d consecutive clean calls)",
+                    old, self._limit, _SUCCESS_STREAK_TARGET,
+                )
+                self._condition.notify_all()  # more room now — wake any waiters
+
+    async def __aenter__(self) -> "AdaptiveSemaphore":
+        await self.acquire()
+        return self
+
+    async def __aexit__(self, *exc_info) -> None:
+        await self.release()
 
 
-async def _process_job(client, model_name: str, semaphore: asyncio.Semaphore,
+async def _process_job(client, model_name: str, semaphore: AdaptiveSemaphore,
                        job: dict, on_result, token_counts: list,
                        api_call_counter: list, err_stats: dict) -> bool:
     prompt = PROMPT_TEMPLATE.format(
@@ -247,6 +309,7 @@ async def _process_job(client, model_name: str, semaphore: asyncio.Semaphore,
                     ))
                 text = _strip_markdown_fence(response.text.strip())
                 result = _validate(json.loads(text.strip()))
+                await semaphore.on_success()
                 if on_result:
                     on_result(job["id"], result)
                 if had_retry:
@@ -261,8 +324,9 @@ async def _process_job(client, model_name: str, semaphore: asyncio.Semaphore,
                     backoff = _backoff_time(attempt)
                     err_stats["503_count"] += 1
                     err_stats["max_backoff"] = max(err_stats["max_backoff"], backoff)
-                    _logger.warning("503 on job %r attempt %d/%d, backoff %.1fs",
-                                    job.get("id"), attempt + 1, MAX_RETRIES, backoff)
+                    await semaphore.on_503()
+                    _logger.warning("503 on job %r attempt %d/%d, backoff %.1fs, concurrency now %d",
+                                    job.get("id"), attempt + 1, MAX_RETRIES, backoff, semaphore.limit)
                 elif _is_network_error(exc):
                     err_stats["network_errors"] += 1
                     raise GeminiNetworkError(
@@ -299,10 +363,11 @@ async def _classify_all(config: dict, jobs: list[dict], on_result) -> tuple[int,
     # Re-read env var here so callers can set it after module import
     semaphore_limit = int(os.getenv("GEMINI_CONCURRENCY", str(SEMAPHORE_LIMIT)))
 
-    # Start with reduced concurrency and ramp up to avoid cold-start 503 burst
-    semaphore = asyncio.Semaphore(_RAMP_INITIAL)
-    ramp_task = asyncio.create_task(
-        _ramp_up(semaphore, _RAMP_INITIAL, semaphore_limit, _RAMP_SECONDS)
+    # Start at full concurrency; back off reactively on 503s and ramp back up
+    # after a streak of clean calls (see AdaptiveSemaphore) instead of a fixed
+    # time-based cold-start ramp.
+    semaphore = AdaptiveSemaphore(
+        initial=semaphore_limit, min_limit=_MIN_CONCURRENCY, max_limit=semaphore_limit
     )
 
     token_counts: list = []
@@ -316,8 +381,9 @@ async def _classify_all(config: dict, jobs: list[dict], on_result) -> tuple[int,
     }
 
     _logger.info(
-        "=== Classification batch start — %d jobs | template ~%d chars static | concurrency: %d→%d over %.0fs ===",
-        len(jobs), _TEMPLATE_STATIC_CHARS, _RAMP_INITIAL, semaphore_limit, _RAMP_SECONDS,
+        "=== Classification batch start — %d jobs | template ~%d chars static | "
+        "adaptive concurrency: %d (min %d, max %d) ===",
+        len(jobs), _TEMPLATE_STATIC_CHARS, semaphore_limit, _MIN_CONCURRENCY, semaphore_limit,
     )
 
     tasks = [
@@ -334,12 +400,6 @@ async def _classify_all(config: dict, jobs: list[dict], on_result) -> tuple[int,
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         raise
-    finally:
-        ramp_task.cancel()
-        try:
-            await ramp_task
-        except asyncio.CancelledError:
-            pass
 
     classified = sum(results)
     skipped = len(results) - classified
@@ -363,11 +423,11 @@ async def _classify_all(config: dict, jobs: list[dict], on_result) -> tuple[int,
     _logger.info(
         "=== Batch complete — jobs: %d | API calls: %d | retries: %d | "
         "503_errors: %d | network_errors: %d | max_backoff: %.1fs | retry_success_rate: %s | "
-        "classified: %d | failed: %d%s ===",
+        "final concurrency: %d | classified: %d | failed: %d%s ===",
         len(jobs), total_calls, retries,
         err_stats["503_count"], err_stats["network_errors"],
         err_stats["max_backoff"], retry_success_rate,
-        classified, skipped, token_suffix,
+        semaphore.limit, classified, skipped, token_suffix,
     )
 
     return classified, skipped
