@@ -745,7 +745,8 @@ def api_stats():
               AND j.delisted_at IS NULL
               AND COALESCE(s.state, 'new') != 'hidden'
               AND (? = 0 OR (j.urgency IS NULL OR j.urgency != 'high'))
-        """, (urgent_p,)).fetchone()
+              AND (? = 0 OR j.is_whv_friendly = 1)
+        """, (urgent_p, whv_p)).fetchone()
         by_source = conn.execute("""
             SELECT j.source, COUNT(*) AS cnt
             FROM jobs j LEFT JOIN job_user_states s ON j.id = s.job_id
