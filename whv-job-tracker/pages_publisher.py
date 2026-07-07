@@ -62,9 +62,31 @@ def _current_branch() -> str:
         return "unknown"
 
 
+def _find_old_all_jobs_files(pages_dir: Path, today: str) -> list[str]:
+    """Find all-jobs snapshot files (no _today suffix) in pages_dir that
+    aren't today's, returning their repo-relative paths ("Pages/xxx.html").
+
+    Must be called against the actual push target's Pages/ directory (the
+    freshly-checked-out worktree, or _REPO_ROOT when already on main) — NOT
+    a local working copy that may have drifted from what's really on GitHub.
+    A local-disk-based scan can silently miss files that only exist on the
+    remote, permanently orphaning them (see: jobs_2026-07-02.html, which
+    never got cleaned up because the local Pages/ folder had lost track of
+    it by the time the next run's push happened).
+    """
+    old_rels: list[str] = []
+    if not pages_dir.exists():
+        return old_rels
+    for p in pages_dir.glob("jobs_*.html"):
+        m = _ALL_FNAME_RE.match(p.name)
+        if m and m.group(1) != today:
+            old_rels.append(f"Pages/{p.name}")
+    return old_rels
+
+
 def _push_via_worktree(
     files_to_write: list[tuple[Path, str]],
-    files_to_delete: list[str],
+    today: str,
     commit_msg: str,
 ) -> bool:
     """Commit multiple files to remote main using a temporary git worktree.
@@ -81,6 +103,13 @@ def _push_via_worktree(
         if r.returncode != 0:
             _log.error("git worktree add failed — push aborted")
             return False
+
+        # Scan the actual checked-out state of origin/main (not local disk)
+        # so stale all-jobs files are always found and cleaned up, even if
+        # the local Pages/ folder has lost track of them.
+        files_to_delete = _find_old_all_jobs_files(wt_dir / "Pages", today)
+        for repo_rel in files_to_delete:
+            _log.info("queuing old all-jobs file for remote deletion: %s", repo_rel)
 
         for src_file, repo_rel in files_to_write:
             dst = wt_dir / repo_rel
@@ -119,7 +148,7 @@ def _push_via_worktree(
 
 def _push_direct(
     files_to_write: list[tuple[Path, str]],
-    files_to_delete: list[str],
+    today: str,
     commit_msg: str,
 ) -> bool:
     """Add, commit, and push when already on the main branch.
@@ -127,6 +156,10 @@ def _push_direct(
     New/updated files are picked up by git add -A Pages/; old all-jobs files
     are staged for deletion via git rm --cached (local copies are kept).
     """
+    files_to_delete = _find_old_all_jobs_files(_REPO_ROOT / "Pages", today)
+    for repo_rel in files_to_delete:
+        _log.info("queuing old all-jobs file for remote deletion: %s", repo_rel)
+
     cmds: list[tuple[list[str], str]] = [
         (["git", "add", "-A", "Pages/"], "git add"),
     ]
@@ -198,25 +231,20 @@ def publish_today() -> PublishResult:
         today_fname, len(today_jobs), all_fname, len(all_jobs),
     )
 
-    # Stage previous day's all-jobs files for remote deletion (local copies kept)
-    old_rels: list[str] = []
-    for p in _PAGES_DIR.glob("jobs_*.html"):
-        m = _ALL_FNAME_RE.match(p.name)
-        if m and m.group(1) != today:
-            old_rels.append(f"Pages/{p.name}")
-            _log.info("queuing old all-jobs file for remote deletion: %s", p.name)
-
     today_count  = len(today_jobs)
     all_count    = len(all_jobs)
     today_cities = sorted({j["city"] for j in today_jobs if j.get("city")})
     commit_msg   = f"data: jobs report {today}"
 
+    # Which old all-jobs files to delete is decided inside _push_direct /
+    # _push_via_worktree, scanning the actual push target — not local disk
+    # (see _find_old_all_jobs_files docstring for why).
     files_to_write = [(today_out, today_repo_rel), (all_out, all_repo_rel)]
     branch  = _current_branch()
     push_ok = (
-        _push_direct(files_to_write, old_rels, commit_msg)
+        _push_direct(files_to_write, today, commit_msg)
         if branch == "main"
-        else _push_via_worktree(files_to_write, old_rels, commit_msg)
+        else _push_via_worktree(files_to_write, today, commit_msg)
     )
 
     return PublishResult(
