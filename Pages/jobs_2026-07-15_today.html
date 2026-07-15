@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<title>WHV 職缺報告 — 2026-07-15</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,Arial,sans-serif;color:#222;background:#f0f4f8}
+.hdr{background:#1a73e8;color:#fff;padding:20px 32px}
+.hdr h1{font-size:1.25rem}
+.hdr p{opacity:.8;font-size:.88rem;margin-top:4px}
+.wrap{max-width:980px;margin:24px auto;padding:0 14px}
+.bar{background:#fff;border-radius:8px;padding:14px 18px;margin-bottom:14px;
+     display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;
+     box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.bar label{font-size:.8rem;color:#666;display:block;margin-bottom:3px}
+select{padding:6px 10px;border:1px solid #ddd;border-radius:5px;font-size:.88rem;background:#fafafa}
+#badge{margin-left:auto;background:#e8f0fe;color:#1a73e8;
+       padding:3px 12px;border-radius:12px;font-size:.82rem;font-weight:700;align-self:center}
+.card{background:#fff;border-radius:8px;padding:14px 18px;margin-bottom:9px;
+      box-shadow:0 1px 3px rgba(0,0,0,.07);border-left:4px solid #1a73e8}
+.card.urg{border-left-color:#ea4335}
+.ttl{font-size:.97rem;font-weight:600}
+.ttl a{color:#1a73e8;text-decoration:none}
+.ttl a:hover{text-decoration:underline}
+.meta{font-size:.8rem;color:#666;margin-top:5px;display:flex;gap:9px;flex-wrap:wrap}
+.tag{background:#f0f4f8;border-radius:4px;padding:2px 7px}
+.sal{color:#34a853;font-weight:600}
+.note{font-size:.77rem;color:#999;margin-top:4px;font-style:italic}
+#none{text-align:center;padding:40px;color:#aaa;display:none}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <h1>&#x1F998; WHV 職缺報告</h1>
+  <p>2026-07-15 &nbsp;·&nbsp; 共 39 筆 WHV 友善職缺</p>
+</div>
+<div class="wrap">
+  <div class="bar">
+    <div><label>城市</label>
+      <select id="fc" onchange="render()">
+        <option value="">全部城市</option>
+        <option value="Brisbane">Brisbane</option>
+<option value="Broome">Broome</option>
+<option value="Cairns">Cairns</option>
+<option value="Condon">Condon</option>
+<option value="Darwin">Darwin</option>
+<option value="Kuranda">Kuranda</option>
+<option value="Melbourne">Melbourne</option>
+<option value="Perth">Perth</option>
+<option value="Sydney">Sydney</option>
+<option value="Townsville">Townsville</option>
+      </select>
+    </div>
+    <div><label>職缺類型</label>
+      <select id="ft" onchange="render()">
+        <option value="">全部類型</option>
+        <option value="hospitality">餐飲/服務</option>
+<option value="hotel">飯店/住宿</option>
+<option value="office">行政/辦公</option>
+<option value="other">其他</option>
+<option value="retail">零售</option>
+      </select>
+    </div>
+    <div><label>緊急程度</label>
+      <select id="fu" onchange="render()">
+        <option value="">全部</option>
+        <option value="normal">一般</option>
+        <option value="low">不急</option>
+        <option value="high">緊急</option>
+      </select>
+    </div>
+    <span id="badge"></span>
+  </div>
+  <div id="list"></div>
+  <div id="none">沒有符合條件的職缺</div>
+</div>
+<script>
+var J=[{"id": "adzuna_5794881539", "title": "Cook", "company": "Almarzole Pty Ltd T/A Jayliano's Brookside", "location": "Everton Park, Brisbane", "city": "Brisbane", "job_type": "hospitality", "salary_min": 75000.0, "salary_max": 85000.0, "url": "https://www.adzuna.com.au/details/5794881539?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 0, "classifier_note": "Cook role in restaurant, suitable for short-term work."}, {"id": "adzuna_5799967854", "title": "Part time Barista - Kedron", "company": "Starbucks", "location": "Kedron, Brisbane", "city": "Brisbane", "job_type": "retail", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5799967854?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 0, "classifier_note": "Retail barista role is suitable for short-term work."}, {"id": "adzuna_5800088501", "title": "Casual Sales Assistant | Prouds Broome", "company": "Prouds Jewellers", "location": "Djugun, Broome", "city": "Broome", "job_type": "retail", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5800088501?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 1, "classifier_note": "Casual retail role suitable for WHV holders."}, {"id": "jora_8294860367a84b870e2f1d403104b0b0", "title": "Food & Beverage Attendant - Cairns Airport", "company": "Cater Care", "location": "Cairns QLD", "city": "Cairns", "job_type": "hospitality", "salary_min": 27.0, "salary_max": 27.0, "url": "https://au.jora.com/job/Food-Beverage-Attendant-66b4a35f7a78a45dd999c19c8eade639", "source": "jora", "urgency": "normal", "regional_area": 1, "classifier_note": "Airport F&B roles are common for WHV."}, {"id": "jora_8d523f37c1141c6d2b517a05ad465700", "title": "Food Service Assistant - Redlynch", "company": "Regis", "location": "Cairns QLD", "city": "Cairns", "job_type": "hospitality", "salary_min": 27.0, "salary_max": 29.0, "url": "https://au.jora.com/job/Food-Service-Assistant-932e777e7ea5f4b66aa99834a9f395bc", "source": "jora", "urgency": "normal", "regional_area": 1, "classifier_note": "Food service roles are common for WHV holders."}, {"id": "adzuna_5799345772", "title": "Guest Service Agent", "company": "Crystalbrook Flynn", "location": "Manoora, Cairns", "city": "Cairns", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5799345772?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 1, "classifier_note": "Hospitality role in Cairns, suitable for WHV."}, {"id": "adzuna_5796296169", "title": "Icecream Cook", "company": "Nu Nu Restaurant", "location": "Manoora, Cairns", "city": "Cairns", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5796296169?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 1, "classifier_note": "Cook with pastry experience fits casual/short-term work."}, {"id": "jora_d5426ade9ca89f3039d067a6aefe9e5f", "title": "Public Areas Attendant", "company": "Accor", "location": "Cairns QLD", "city": "Cairns", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://au.jora.com/job/Public-Area-Attendant-1696e1d203a199f5a78fc588481996e6", "source": "jora", "urgency": "normal", "regional_area": 1, "classifier_note": "Hospitality role suitable for short-term/casual work."}, {"id": "jora_4d2c02ccae968873caea3cd11203c0fc", "title": "Housekeeper/Room Attendant", "company": "Vision Hotels", "location": "Cairns QLD", "city": "Cairns", "job_type": "hotel", "salary_min": null, "salary_max": null, "url": "https://au.jora.com/job/Room-Attendant-e171545d85ee3ec69509ae2d786c7e02", "source": "jora", "urgency": "normal", "regional_area": 1, "classifier_note": "Housekeeping is a common role for WHV holders."}, {"id": "adzuna_5800446992", "title": "Part Time Guest Services Assistant", "company": "Trinity Collective Management atf Trinity Collective Unit Trust", "location": "Manoora, Cairns", "city": "Cairns", "job_type": "hotel", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5800446992?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 1, "classifier_note": "Guest services role, common for backpackers."}, {"id": "jora_fa41ebf281f3a49df704a74d1bd4db8c", "title": "Room Attendant", "company": "Accor", "location": "Cairns QLD", "city": "Cairns", "job_type": "hotel", "salary_min": null, "salary_max": null, "url": "https://au.jora.com/job/Room-Attendant-ee9c2655c2fe3e899e600b5f20815007", "source": "jora", "urgency": "normal", "regional_area": 1, "classifier_note": "General hospitality role suitable for short-term work."}, {"id": "jora_c1f62d7253bbfe32526c507151659650", "title": "Operations Administration Assistant", "company": "CaPTA Group", "location": "Cairns QLD", "city": "Cairns", "job_type": "office", "salary_min": null, "salary_max": null, "url": "https://au.jora.com/job/Operations-Administration-Assistant-00946768f742953010f63f87af03c36e", "source": "jora", "urgency": "normal", "regional_area": 1, "classifier_note": "Administrative role in Cairns, suitable for WHV."}, {"id": "jora_cc7da133e96296763e4db0cf81006ec0", "title": "Receptionist - Administration Officer", "company": "National Joblink", "location": "Cairns QLD", "city": "Cairns", "job_type": "office", "salary_min": null, "salary_max": null, "url": "https://au.jora.com/job/Administration-Officer-d5401356f2758813571ab86e82f8f628", "source": "jora", "urgency": "normal", "regional_area": 1, "classifier_note": "Suitable for WHV holders seeking admin experience."}, {"id": "jora_ec752fcd0b3f96660b969ad8785b45f5", "title": "Couple wanted to help at unique family run retreat", "company": "Grey Nomads", "location": "Atherton QLD", "city": "Cairns", "job_type": "other", "salary_min": null, "salary_max": null, "url": "https://au.jora.com/job/Couple-wanted-to-92c5634739b3f6d9ef6689664760457e", "source": "jora", "urgency": "normal", "regional_area": 1, "classifier_note": "Job suits short-term work, caravan parking provided."}, {"id": "jora_ec1c5cd058cac640a26e7a8d006f921c", "title": "Domestic Assistant- Cairns", "company": "Regis", "location": "Redlynch QLD", "city": "Cairns", "job_type": "other", "salary_min": 34.0, "salary_max": 34.0, "url": "https://au.jora.com/job/Domestic-Assistant-0d70c788426a7fd8221df1dcf0d76ff3", "source": "jora", "urgency": "normal", "regional_area": 1, "classifier_note": "Suitable for backpackers seeking short-term work."}, {"id": "jora_ad3da35f0f6439767147c767253b3105", "title": "Laundry Assistant", "company": "Regis", "location": "Whitfield QLD", "city": "Cairns", "job_type": "other", "salary_min": 27.0, "salary_max": 29.0, "url": "https://au.jora.com/job/Laundry-Assistant-ebc3f6b4e5499077f771c5f29d5d5b6f", "source": "jora", "urgency": "normal", "regional_area": 1, "classifier_note": "Suitable for short-term/casual work."}, {"id": "jora_926e9c7f1398c732a052088b29efd852", "title": "Team Member - Coles Clifton Beach - Bakery", "company": "Coles Group", "location": "Cairns QLD", "city": "Cairns", "job_type": "retail", "salary_min": null, "salary_max": null, "url": "https://au.jora.com/job/Team-Member-a9bc1fe0341079cafc1e82db411aac1c", "source": "jora", "urgency": "normal", "regional_area": 1, "classifier_note": "Casual retail role, minimal experience required, suitable for backpackers."}, {"id": "jora_6b4cb792d3260ff5b8c3db3786aa24c7", "title": "Liquor Team Member - BWS Irish Finnegans Drive", "company": "BWS", "location": "Condon QLD", "city": "Condon", "job_type": "retail", "salary_min": null, "salary_max": null, "url": "https://au.jora.com/job/Liquor-Team-Member-39fd757b26cee7f381cc05027e0fb418", "source": "jora", "urgency": "normal", "regional_area": 1, "classifier_note": "Typical short-term retail role suitable for WHV."}, {"id": "jora_4aeecd0efe0c3ed254cf02b9b9df18e2", "title": "Guest Service Agent", "company": "Accor", "location": "Darwin NT", "city": "Darwin", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://au.jora.com/job/Guest-Service-Agent-7e231fd94e93f02b83e64b53bbc0f3ae", "source": "jora", "urgency": "normal", "regional_area": 1, "classifier_note": "Guest service is a common WHV friendly role."}, {"id": "adzuna_5800447500", "title": "Kitchen Hand", "company": "Snapper Rocks Bar and Kitchen", "location": "Larrakeyah, Darwin", "city": "Darwin", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5800447500?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 1, "classifier_note": "Kitchen hand roles are common for WHV."}, {"id": "jora_c677fbc1197e7cc7c1b10a50e904e7ef", "title": "Supervisor Lucky North, Mindil Beach Casino Resort", "company": "Delaware North", "location": "Darwin NT", "city": "Darwin", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://au.jora.com/job/Supervisor-c21e45173573fc527b2ab8d1b14a2714", "source": "jora", "urgency": "normal", "regional_area": 1, "classifier_note": "Casino supervisor role suitable for short-term backpac.jobs."}, {"id": "jora_8ad4f3aa017998425e80429756c02319", "title": "Night Auditor", "company": "Accor", "location": "Darwin NT", "city": "Darwin", "job_type": "hotel", "salary_min": null, "salary_max": null, "url": "https://au.jora.com/job/Night-Auditor-cebcd83286e57b35f642663616df119c", "source": "jora", "urgency": "normal", "regional_area": 1, "classifier_note": "Hotel job suitable for short-term/casual work."}, {"id": "adzuna_5800444627", "title": "Customer Service Team Member - Seasonal Casual", "company": "Bunnings", "location": "Larrakeyah, Darwin", "city": "Darwin", "job_type": "retail", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5800444627?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 1, "classifier_note": "Seasonal casual role, suitable for short-term work."}, {"id": "jora_5b8a736628ff5ff810554c752f729904", "title": "Guest Liaison/Reservations Assistant", "company": "CaPTA Group", "location": "Kuranda QLD", "city": "Kuranda", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://au.jora.com/job/Guest-Liaison-Reservations-96ee7eb273f997f062fa9792fcea6ec6", "source": "jora", "urgency": "normal", "regional_area": 1, "classifier_note": "Suitable for short-term roles, customer service focus."}, {"id": "adzuna_5800477285", "title": "Casual Barista - 117 Swanston St Casual", "company": "Starbucks", "location": "Melbourne CBD, Melbourne", "city": "Melbourne", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5800477285?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 0, "classifier_note": "Casual role in a well-known chain is typical for WHV."}, {"id": "adzuna_5800536374", "title": "Casual Barista/Allrounder — Moon, Melbourne CBD", "company": "The Lune Co", "location": "Melbourne, Melbourne Region", "city": "Melbourne", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5800536374?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 0, "classifier_note": "Casual role in hospitality suitable for backpackers."}, {"id": "adzuna_5799967888", "title": "Casual Cleaner", "company": "Oaks Hotels", "location": "Melbourne, Melbourne Region", "city": "Melbourne", "job_type": "hotel", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5799967888?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 0, "classifier_note": "Casual cleaner role suitable for WHV holders."}, {"id": "adzuna_5793095620", "title": "Allrounder Barista", "company": "CAFE L", "location": "Perth CBD, Perth", "city": "Perth", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5793095620?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 0, "classifier_note": "Barista role suitable for short-term work."}, {"id": "adzuna_5800447629", "title": "Cafe Allrounder", "company": "Hangout on Hay", "location": "Perth CBD, Perth", "city": "Perth", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5800447629?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 0, "classifier_note": "Casual/temporary role, suitable for short-term stays."}, {"id": "adzuna_5800445074", "title": "baristas or Bar & Beverages staffs or kitchen staff", "company": "Private Advertiser", "location": "Perth CBD, Perth", "city": "Perth", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5800445074?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 0, "classifier_note": "Hospitality roles are generally suitable for WHV holders."}, {"id": "adzuna_5799968028", "title": "Food & Beverage Attendant / Barista", "company": "AccorHotel", "location": "Sydney, Sydney Region", "city": "Sydney", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5799968028?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 0, "classifier_note": "Hospitality role suitable for short-term/casual work."}, {"id": "adzuna_5799887909", "title": "Section Waiters", "company": "Joji", "location": "The Rocks, Sydney", "city": "Sydney", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5799887909?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 0, "classifier_note": "Suitable for short-term hospitality roles like waiters."}, {"id": "adzuna_5800535337", "title": "Waiter", "company": "Ace Hotel Sydney", "location": "The Rocks, Sydney", "city": "Sydney", "job_type": "hospitality", "salary_min": 68640.0, "salary_max": 83200.0, "url": "https://www.adzuna.com.au/details/5800535337?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 0, "classifier_note": "Hospitality role, suitable for short-term work."}, {"id": "adzuna_5800446144", "title": "Crew Member", "company": "Hungry Jacks", "location": "North Ward, Townsville", "city": "Townsville", "job_type": "hospitality", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5800446144?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 1, "classifier_note": "Standard fast-food job, common for backpackers."}, {"id": "jora_4fd81a4bdb8615cc7bdd9fbb63a253f5", "title": "Showroom and Admin Assistant", "company": "All Blinds and Curtains", "location": "Townsville QLD", "city": "Townsville", "job_type": "office", "salary_min": null, "salary_max": null, "url": "https://au.jora.com/job/Showroom-and-Admin-7d3f9e87947d4b80c9257f1c08c8cac1", "source": "jora", "urgency": "normal", "regional_area": 1, "classifier_note": "Admin/customer service role suitable for short-term work."}, {"id": "jora_1550d1e7e27476eb22350cdb2a85cacf", "title": "Casual Cleaner and Car Park Attendant", "company": "Kelsian Group", "location": "Townsville QLD", "city": "Townsville", "job_type": "other", "salary_min": null, "salary_max": null, "url": "https://au.jora.com/job/Cleaner-fccf6264ef2b474d125c22cca64a28db", "source": "jora", "urgency": "normal", "regional_area": 1, "classifier_note": "Casual role is suitable for WHV holders."}, {"id": "adzuna_5800447826", "title": "Domestic Assistant", "company": "Still Able", "location": "North Ward, Townsville", "city": "Townsville", "job_type": "other", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5800447826?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 1, "classifier_note": "Casual domestic assistant role suitable for short-term work."}, {"id": "adzuna_5800088620", "title": "Pharmacy Assistant", "company": "Pharmacy Assistant L1 - Area 4", "location": "North Ward, Townsville", "city": "Townsville", "job_type": "other", "salary_min": null, "salary_max": null, "url": "https://www.adzuna.com.au/details/5800088620?utm_medium=api&utm_source=a0069337", "source": "adzuna", "urgency": "normal", "regional_area": 1, "classifier_note": "Casual role suitable for backpackers. Not explicitly excluded."}, {"id": "jora_ecccad338bd40c9422483b989e16fb66", "title": "Customer Assistant - Dan Murphy’s Kirwan", "company": "Dan Murphy's", "location": "Kirwan QLD", "city": "Townsville", "job_type": "retail", "salary_min": null, "salary_max": null, "url": "https://au.jora.com/job/Customer-Assistant-Dan-0fecbe060f9b120beb30e2fef2e2dad9", "source": "jora", "urgency": "normal", "regional_area": 1, "classifier_note": "Customer service role, often suitable for backpackers."}];
+var L={"hospitality": "餐飲/服務", "hotel": "飯店/住宿", "office": "行政/辦公", "retail": "零售", "farm": "農場", "other": "其他", "unknown": "未分類"};
+function sal(a,b){
+  if(!a&&!b)return'';
+  if(a&&b)return'$'+Math.round(a)+'–$'+Math.round(b)+'/yr';
+  if(a)return'$'+Math.round(a)+'+ /yr';
+  return'up to $'+Math.round(b)+'/yr';
+}
+function render(){
+  var city=document.getElementById('fc').value;
+  var type=document.getElementById('ft').value;
+  var urg=document.getElementById('fu').value;
+  var f=J.filter(function(j){
+    if(city&&j.city!==city)return false;
+    if(type&&j.job_type!==type)return false;
+    if(urg&&j.urgency!==urg)return false;
+    return true;
+  });
+  document.getElementById('badge').textContent=f.length+' 筆';
+  var list=document.getElementById('list');
+  if(!f.length){list.innerHTML='';document.getElementById('none').style.display='';return;}
+  document.getElementById('none').style.display='none';
+  list.innerHTML=f.map(function(j){
+    var s=sal(j.salary_min,j.salary_max);
+    var tl=L[j.job_type]||j.job_type;
+    var reg=j.regional_area===1?'🌿 偏遠':'';
+    var uu=j.urgency==='high'?'🔴 緊急':'';
+    var th=j.url?'<a href="'+j.url+'" target="_blank">'+j.title+'</a>':j.title;
+    return'<div class="card'+(j.urgency==='high'?' urg':'')+'">'+
+      '<div class="ttl">'+th+'</div>'+
+      '<div class="meta">'+
+        '<span>'+(j.company||'—')+'</span>'+
+        '<span>'+(j.location||j.city)+'</span>'+
+        (s?'<span class="sal">'+s+'</span>':'')+
+        '<span class="tag">'+tl+'</span>'+
+        '<span class="tag">'+j.source+'</span>'+
+        (reg?'<span class="tag">'+reg+'</span>':'')+
+        (uu?'<span class="tag">'+uu+'</span>':'')+
+      '</div>'+
+      (j.classifier_note?'<div class="note">'+j.classifier_note+'</div>':'')+
+    '</div>';
+  }).join('');
+}
+render();
+</script>
+</body>
+</html>
