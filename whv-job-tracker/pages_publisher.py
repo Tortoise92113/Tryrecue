@@ -2,10 +2,13 @@
 pages_publisher.py — Generate daily Pages HTMLs and push to GitHub main.
 
 publish_today() generates two reports each run:
-  • jobs_YYYY-MM-DD_today.html  — jobs fetched today
-  • jobs_YYYY-MM-DD.html        — all active WHV jobs
-Previous day's all-jobs file (jobs_YYYY-MM-DD.html, no _today suffix) is
-deleted on each run to keep the Pages/ folder tidy.
+  • jobs_YYYY-MM-DD_today.html  — jobs fetched today (dated, kept as history)
+  • au_jobs_all.html            — all active WHV jobs, fixed filename so it
+                                   has a permanent, shareable URL that never
+                                   changes day to day
+Any leftover dated all-jobs file from before this fixed filename existed
+(jobs_YYYY-MM-DD.html, no _today suffix) is cleaned up on each run to keep
+the Pages/ folder tidy — see _find_old_all_jobs_files.
 """
 
 import logging
@@ -198,8 +201,11 @@ def publish_today() -> PublishResult:
 
     Writes two files:
       - jobs_YYYY-MM-DD_today.html  (jobs fetched today)
-      - jobs_YYYY-MM-DD.html        (all active WHV jobs)
-    Deletes any previous day's all-jobs file found in Pages/.
+      - au_jobs_all.html            (all active WHV jobs — fixed filename,
+                                      overwritten in place each run so it has
+                                      a stable URL)
+    Also cleans up any leftover dated all-jobs file from before this fixed
+    filename existed.
 
     push_ok=False means the git push failed; URLs are still returned so callers
     can display them with a "may not be updated" caveat.
@@ -210,7 +216,7 @@ def publish_today() -> PublishResult:
     today = date.today().strftime("%Y-%m-%d")
 
     today_fname    = f"jobs_{today}_today.html"
-    all_fname      = f"jobs_{today}.html"
+    all_fname      = "au_jobs_all.html"
     today_repo_rel = f"Pages/{today_fname}"
     all_repo_rel   = f"Pages/{all_fname}"
     today_out      = _PAGES_DIR / today_fname
