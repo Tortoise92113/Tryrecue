@@ -30,14 +30,6 @@ gemini:
   api_key: YOUR_GEMINI_API_KEY
   model: gemini-2.5-flash
 
-email:
-  smtp_server: smtp.gmail.com
-  smtp_port: 587
-  sender: your_email@gmail.com
-  app_password: YOUR_GMAIL_APP_PASSWORD
-  recipients:
-    - recipient@gmail.com
-
 schedule:
   run_time: "10:00"
   timezone: "Australia/Darwin"

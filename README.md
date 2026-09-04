@@ -11,8 +11,7 @@
 - 標記可集簽地區（Regional Area）的職缺
 - 網頁介面支援篩選（城市、職缺類型、狀態）
 - 職缺狀態管理（new / saved / applied / hidden）
-- Email 通知新職缺
-- 排程自動執行（每日定時抓取）
+- 排程自動執行（每日定時抓取），自動發布到 GitHub Pages
 
 ## 安裝
 
@@ -35,8 +34,6 @@ cp whv-job-tracker/config.example.yml whv-job-tracker/config.yml
 |------|------|
 | `adzuna.app_id` / `app_key` | [Adzuna API](https://developer.adzuna.com/) 申請 |
 | `gemini.api_key` | [Google AI Studio](https://aistudio.google.com/) 申請 |
-| `email.sender` | Gmail 帳號 |
-| `email.app_password` | Gmail 應用程式密碼（需開啟兩步驟驗證） |
 | `search.cities` | 要搜尋的澳洲城市列表 |
 
 ## 執行
@@ -73,7 +70,7 @@ whv-job-tracker/
 ├── config.example.yml   # 設定範本
 ├── storage.py           # SQLite 資料庫操作
 ├── classifier.py        # Gemini AI 分類
-├── notifier.py          # Email 通知
+├── pages_publisher.py   # 發布到 GitHub Pages
 ├── run_scheduler.py     # 排程執行
 ├── sources/             # 各平台抓取器
 │   ├── adzuna.py

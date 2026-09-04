@@ -1,8 +1,8 @@
 """
-main.py — single run of the full pipeline:
+main.py — single run of the full pipeline (this branch does not send email):
   1. Fetch jobs  (Adzuna → Backpacker Job Board → Jora)
   2. Classify new jobs with Gemini
-  3. Send daily digest email
+  3. Publish the GitHub Pages report
 """
 
 import logging
@@ -14,7 +14,6 @@ import storage
 from analyze import run_analysis
 from classifier import GeminiNetworkError, classify_batch
 from filters import pre_filter
-from notifier import send_failure_alert, send_update_notification
 from sources import adzuna, backpacker_job_board, jora
 
 _log = logging.getLogger("main")
@@ -118,13 +117,6 @@ def run(config: dict | None = None):
     except Exception as exc:
         _log.warning("pages publish failed (non-fatal): %s", exc)
 
-    # ── 5. Notify ─────────────────────────────────────────────────────────
-    _log.info("sending update notification…")
-    try:
-        send_update_notification(config, source_errors=source_errors or None)
-    except Exception as exc:
-        _log.warning("email failed: %s", exc)
-
     _log.info("pipeline complete")
 
 
@@ -146,17 +138,9 @@ def classify_only(config: dict | None = None):
         )
     except GeminiNetworkError as exc:
         _log.error("classification skipped — network unreachable: %s", exc)
-        try:
-            send_failure_alert(config, f"Gemini DNS/network failure:\n{exc}")
-        except Exception as mail_exc:
-            _log.warning("failed to send failure alert: %s", mail_exc)
         sys.exit(1)
     except Exception as exc:
         _log.error("unexpected classification error: %s", exc, exc_info=True)
-        try:
-            send_failure_alert(config, f"{type(exc).__name__}: {exc}")
-        except Exception as mail_exc:
-            _log.warning("failed to send failure alert: %s", mail_exc)
         sys.exit(1)
     deleted = storage.soft_delete_non_whv_jobs()
     if deleted:
@@ -167,12 +151,6 @@ def classify_only(config: dict | None = None):
         run_analysis()
     except Exception as exc:
         _log.warning("analysis failed: %s", exc)
-
-    _log.info("sending update notification…")
-    try:
-        send_update_notification(config)
-    except Exception as exc:
-        _log.warning("email failed: %s", exc)
 
     _log.info("classify_only complete")
 
