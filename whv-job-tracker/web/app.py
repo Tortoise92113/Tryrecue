@@ -824,4 +824,7 @@ if __name__ == "__main__":
     debug = os.environ.get("FLASK_DEBUG", "1") == "1"
     if _AUTO_SHUTDOWN:
         threading.Thread(target=_shutdown_watchdog, daemon=True).start()
-    app.run(debug=debug, port=port, use_reloader=debug)
+    # Explicit 127.0.0.1 (not Flask's implicit default): this app has no
+    # authentication on destructive routes (purge, permanent_delete, etc.),
+    # so it must never be reachable from other devices on the network.
+    app.run(host="127.0.0.1", debug=debug, port=port, use_reloader=debug)

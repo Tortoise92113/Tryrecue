@@ -227,6 +227,9 @@ def generate_static_report(jobs: list[dict]) -> str:
 <div class="hdr">
   <h1>&#x1F998; WHV 職缺報告</h1>
   <p>{today} &nbsp;·&nbsp; 共 {total} 筆 WHV 友善職缺</p>
+  <p style="opacity:.65;font-size:.72rem;margin-top:2px">
+    資料來源於 Adzuna、Backpacker Job Board、Jora 等第三方職缺網站，僅供個人求職參考，正確性請以原始網站為準。
+  </p>
 </div>
 <div class="wrap">
   <div class="bar">
