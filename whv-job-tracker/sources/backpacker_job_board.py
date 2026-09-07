@@ -98,6 +98,9 @@ def _max_page(html: str) -> int:
 
 def fetch(config: dict) -> list[dict]:
     cities      = config["search"]["cities"]
+    # Per-city cap (not a shared total) — each city gets its own quota so
+    # cities later in `search.cities` don't get starved once earlier ones
+    # (e.g. Sydney/Melbourne) have already used up a shared budget.
     max_results = config.get("backpacker_job_board", {}).get("max_results", 100)
 
     session = requests.Session()
@@ -106,14 +109,12 @@ def fetch(config: dict) -> list[dict]:
     results: dict[str, dict] = {}
 
     for city in cities:
-        if len(results) >= max_results:
-            break
+        slug         = _city_slug(city)
+        max_pg       = None   # discovered after first page fetch
+        page         = 1
+        city_results = 0
 
-        slug     = _city_slug(city)
-        max_pg   = None   # discovered after first page fetch
-        page     = 1
-
-        while len(results) < max_results:
+        while city_results < max_results:
             url = SEARCH_URL.format(slug=slug)
             if page > 1:
                 url += f"?p={page}"
@@ -137,6 +138,7 @@ def fetch(config: dict) -> list[dict]:
 
             for j in jobs:
                 results[j["id"]] = j
+            city_results += len(jobs)
 
             if page >= max_pg:
                 break
@@ -144,4 +146,4 @@ def fetch(config: dict) -> list[dict]:
 
     total = len(results)
     print(f"[backpacker_job_board] fetched {total} unique jobs", file=sys.stderr)
-    return list(results.values())[:max_results]
+    return list(results.values())
