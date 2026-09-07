@@ -11,7 +11,7 @@
 - 標記可集簽地區（Regional Area）的職缺
 - 網頁介面支援篩選（城市、職缺類型、狀態）
 - 職缺狀態管理（new / saved / applied / hidden）
-- 排程自動執行（每日定時抓取），自動發布到 GitHub Pages
+- 排程自動執行（每日定時抓取）
 
 ## 安裝
 
@@ -70,7 +70,6 @@ whv-job-tracker/
 ├── config.example.yml   # 設定範本
 ├── storage.py           # SQLite 資料庫操作
 ├── classifier.py        # Gemini AI 分類
-├── pages_publisher.py   # 發布到 GitHub Pages
 ├── run_scheduler.py     # 排程執行
 ├── sources/             # 各平台抓取器
 │   ├── adzuna.py

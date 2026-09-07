@@ -1,8 +1,9 @@
 """
-main.py — single run of the full pipeline (this branch does not send email):
+main.py — single run of the full pipeline (this branch does not send email,
+and does not push anything to GitHub — that's only meaningful for the
+maintainer's own repo, not for other users running their own copy):
   1. Fetch jobs  (Adzuna → Backpacker Job Board → Jora)
   2. Classify new jobs with Gemini
-  3. Publish the GitHub Pages report
 """
 
 import logging
@@ -101,21 +102,6 @@ def run(config: dict | None = None):
         run_analysis()
     except Exception as exc:
         _log.warning("analysis failed: %s", exc)
-
-    # ── 4. Publish GitHub Pages report ────────────────────────────────────
-    _log.info("publishing GitHub Pages report…")
-    try:
-        from pages_publisher import publish_today
-        result = publish_today()
-        _log.info(
-            "pages: today=%d %s | all=%d %s  (push_ok=%s)",
-            result.today_count, result.today_url,
-            result.all_count, result.all_url, result.push_ok,
-        )
-        if not result.push_ok:
-            _log.warning("git push failed — Pages link may not be updated yet")
-    except Exception as exc:
-        _log.warning("pages publish failed (non-fatal): %s", exc)
 
     _log.info("pipeline complete")
 
